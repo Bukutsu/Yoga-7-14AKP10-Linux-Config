@@ -1,6 +1,29 @@
-# Lenovo Yoga 7 (14AKP10) Long-Term Optimization Guide (v4.0)
-**Goal:** Maximum Reliability (5+ Year Target) + Peak Hardware Optimization.
-**Base OS:** Fedora Workstation (Official) | **Kernel:** Fedora Stock (Stable)
+# Lenovo Yoga 7 (14AKP10) — Fedora Optimization Guide (v4.0)
+**Goal:** Maximum Reliability (5+ Year Target) + Peak Hardware Optimization.  
+**Base OS:** Fedora Workstation (official)  
+**Kernel:** Fedora stock (stable + periodic updates)  
+**Version:** v4.0  
+**Last Updated:** 2026-03-18
+
+---
+
+## Table of Contents
+- [Hardware Compatibility](#hardware-compatibility)
+- [Common Hardware Reference](#common-hardware-reference)
+- [Phase 1: The "Invincible" Core (Reliability & Safety)](#phase-1-the-invincible-core-reliability--safety)
+- [Phase 2: The "Performance Injection" (Optimization)](#phase-2-the-performance-injection-optimization)
+- [Phase 3: Hardware Longevity (Physical Health)](#phase-3-hardware-longevity-physical-health)
+- [Phase 4: Development Environment](#phase-4-development-environment)
+- [Phase 5: Hardware-Accelerated Multimedia](#phase-5-hardware-accelerated-multimedia)
+- [Phase 6: Verify](#phase-6-verify)
+
+---
+
+## Hardware Compatibility
+See the [Hardware Optimization Reference](Hardware_Optimization_Reference.md#hardware-optimization-reference) for the complete hardware compatibility table.
+
+## Common Hardware Reference
+Shared tweaks (scx scheduler, EasyEffects, Wi-Fi, etc.) are documented in [Hardware Optimization Reference](Hardware_Optimization_Reference.md). Use it anytime both guides need the same config or verification steps.
 
 ---
 
@@ -23,6 +46,8 @@ We use Fedora's official vetted kernel but add a safety net to ensure you can al
    ```
    *Benefit:* If an update ever glitches, reboot into a previous snapshot from the GRUB menu.
 
+**Verify:** `sudo snapper -c root list` shows recent snapshots, and `systemctl status snapper-timeline.timer snapper-cleanup.timer grub-btrfsd.service` reports `active`.
+
 ---
 
 ## ⚡ Phase 2: The "Performance Injection" (Optimization)
@@ -40,6 +65,8 @@ We gain the "CachyOS feel" without replacing the core system kernel.
 3. **The "Bpfland" Setting:** Open `scx-manager` (GUI) and select **`scx_bpfland`**. 
    *Why:* This scheduler prioritizes UI/interactive tasks on your Zen 5 cores, giving you the snappiest possible desktop experience.
 
+**Verify:** `systemctl status scx.service` reports `active`, and `scx-manager` shows `scx_bpfland` as the current scheduler.
+
 ---
 
 ## 🔋 Phase 3: Hardware Longevity (Physical Health)
@@ -49,32 +76,22 @@ To make the laptop physically last 5+ years.
    * **KDE:** System Settings -> Power Management -> Advanced -> Set Charge Limit to **80%**.
    * **GNOME:** Settings -> Power -> Battery Health.
    *Benefit:* Effectively doubles the lifecycle of your battery by preventing 100% "cooking."
-2. **OLED Protection (PSR):** 
-   ```bash
-   sudo grubby --update-kernel=ALL --args="amdgpu.dcdebugmask=0x600"
-   ```
-   *Benefit:* Enables Panel Self Refresh (PSR) to save ~1W and reduce heat. 
-   *Verification:* `sudo cat /sys/kernel/debug/dri/0000:04:00.0/eDP-1/psr_state` (Value 21/22 is success).
+
+**Verify:** `cat /sys/class/power_supply/BAT0/charge_control_end_threshold` (or KDE/GNOME charge limit UI) reads `80`.
 
 ---
 
-## 🧠 Phase 4: AMD Ryzen AI (NPU) & Development
-Offloading AI tasks to the NPU to reduce CPU/GPU wear.
+## 💻 Phase 4: Development Environment
+Keep your host system clean by using containers for development.
 
-1. **Memlock Limits:**
-   ```bash
-   echo -e "* soft memlock unlimited\n* hard memlock unlimited" | sudo tee /etc/security/limits.d/99-npu-memlock.conf
-   ```
-2. **FastFlowLM (flm):**
-   ```bash
-   curl -fsSL https://fastflowlm.com/install.sh | sh
-   ```
-3. **Clean Development (Distrobox):** 
+1. **Clean Development (Distrobox):** 
    *Instead of installing dev tools on your host, use containers:*
    ```bash
    sudo dnf install distrobox
    distrobox create -n dev-env -i fedora:latest
    ```
+
+**Verify:** `distrobox list` shows the `dev-env` container.
 
 ---
 
@@ -87,7 +104,9 @@ Ensure the 14AKP10 hardware is fully utilized for audio/video.
    sudo dnf swap ffmpeg-free ffmpeg --allowerasing
    sudo dnf install mesa-va-drivers-freeworld
    ```
-2. **Audio Presets:** Import your EasyEffects presets from `/audio/easyeffects/` for the 4-speaker Atmos profile.
+2. **Audio Presets:** Import your EasyEffects presets from `configs/audio/easyeffects_presets/` for the 4-speaker Atmos profile.
+
+**Verify:** `rpm -q mesa-va-drivers-freeworld` and `ffmpeg` show the swapped packages, and `pactl list sinks short` reports the four-speaker sink with EasyEffects processing active.
 
 ---
 
