@@ -10,6 +10,7 @@
 | Auto-rotate (tablet mode) | ✅ Works | Requires `iio-sensor-proxy` for GNOME rotation |
 | Wi-Fi 7 (MT7925e) | ✅ Works | Disable Wi-Fi powersave to stop flickering |
 | Bluetooth 5.4 | ✅ Works OOB | Same MT7925e chip |
+| IR camera / Howdy | ✅ Works | Refer to the [Arch Wiki for Howdy](https://wiki.archlinux.org/title/Howdy) for setup |
 | 4 speakers + Dolby Atmos | ✅ Works | Kernel 6.18+ exposes all speaker pins |
 | Quad-mic array | ✅ Works | EasyEffects profiles + RNNoise chain |
 | MicroSD reader | ✅ Works OOB | Standard SDHCI support |
