@@ -1,4 +1,4 @@
-# The "Cachy-Arch" Post-Install Optimization Guide (v3.0)
+# The "Cachy-Arch" Post-Install Optimization Guide (v4.0)
 **Target Device:** Lenovo Yoga Slim 7 14AKP10 (AMD Ryzen AI 300 Series)
 **Goal:** Transform a fresh Arch Linux install into a hyper-optimized "Hybrid" workstation with CachyOS power and Btrfs safety.
 
@@ -23,7 +23,13 @@ Assuming you have a fresh Arch Linux installation (base + desktop environment), 
    ```bash
    sudo systemctl enable --now scx_loader.service cachyos-settings.service
    ```
-   *(By default, this loads `scx_bpfland`. Use `scx-manager` (GUI) to monitor or switch schedulers).*
+4. **Configure via scx-manager (GUI):**
+   Open `scx-manager` and set:
+   * **Scheduler:** `scx_bpfland`
+   * **Profile:** `Auto`
+   * **Extra flags:** *(leave empty — Auto mode already includes `-m auto -f`)*
+
+   > `Auto` mode integrates with `power-profiles-daemon` (battery → powersave slice, AC → performance) and uses `-f` to hand frequency hints directly to `amd_pstate=active`. This gives the best efficiency for coding/browsing/light gaming without manual switching.
 
 ---
 
@@ -77,20 +83,34 @@ To use the NPU for local LLMs (e.g., DeepSeek, Qwen) on this hardware:
 
 ---
 
-## Phase 4: Display & Power Optimization (PSR)
+## Phase 4: Display & Power Optimization
 
-Enable Panel Self Refresh to save ~1W of power on the OLED panel.
-
-1. **Add Kernel Parameter:** Append `amdgpu.dcdebugmask=0x600` to your bootloader's kernel command line.
+1. **CPU Power Scaling:** Add `amd_pstate=active` to your bootloader's kernel command line.
    * **Limine:** Edit `/boot/limine.conf`.
-   * **GRUB:** Edit `/etc/default/grub` and run `sudo grub-mkconfig -o /boot/grub/grub.cfg`.
-2. **Auto-Brightness (wluma):**
+   * **GRUB:** Edit `/etc/default/grub` → `GRUB_CMDLINE_LINUX_DEFAULT`, then run `sudo grub-mkconfig -o /boot/grub/grub.cfg`.
+   * **Verify:** `cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver` should output `amd-pstate-epp`.
+2. **Boot-time power tuning** (USB autosuspend, NIC power save, wake timers):
+   ```bash
+   sudo cp configs/system/power/powertop.service /etc/systemd/system/
+   sudo systemctl enable --now powertop.service
+   ```
+3. **ZRAM** (compressed swap-in-RAM — ships enabled by default on CachyOS, verify):
+   ```bash
+   zramctl  # Should show a zram0 device. If empty, install zram-generator.
+   ```
+4. **Auto-Brightness (wluma):**
    ```bash
    yay -S wluma
    sudo usermod -aG video $USER
    systemctl --user enable --now wluma.service
    ```
-3. **Battery Longevity:** Set the 80% charge limit in your DE (KDE/GNOME) settings.
+5. **Battery Longevity:** Set the 80% charge limit in your DE (KDE/GNOME) settings.
+6. **Wi-Fi Powersave flicker fix (MT7925e):** The default NetworkManager Wi-Fi powersave setting causes screen flickering on this hardware. Disable it:
+   ```bash
+   sudo cp configs/network/wifi-powersave-off.conf /etc/NetworkManager/conf.d/
+   sudo systemctl restart NetworkManager
+   ```
+   *This sets `wifi.powersave = 2` (disabled). The network reconnects immediately, no reboot needed.*
 
 ---
 
@@ -100,11 +120,42 @@ Enable Panel Self Refresh to save ~1W of power on the OLED panel.
    ```bash
    sudo pacman -S libva-mesa-driver
    ```
-2. **Audio (4-Speaker Support):** Native in Kernel 6.18+. Import the EasyEffects presets from the `/audio/easyeffects/` folder in this repo for the best 3D sound profile.
+2. **Audio (4-Speaker + Quad-Mic):** All 4 speakers are native in Kernel 6.18+ via `alc287-yoga9-bass-spk-pin`. Import the EasyEffects presets from the `/audio/easyeffects/` folder in this repo.
+   * **Noise Cancellation:** Use the **RNNoise** plugin in EasyEffects on the mic input for real-time noise removal.
+   * **Verify mic sources are active:**
+     ```bash
+     pactl list sources | grep -E 'Name:|Description:' | grep alsa_input
+     # Should show both Mic1 (Digital) and Mic2 (Stereo) sources
+     ```
+3. **Facial Auth (Howdy):** The IR camera works with `howdy` for Linux facial recognition.
+   ```bash
+   sudo pacman -S howdy
+   # Follow setup: sudo howdy add
+   ```
 
 ---
 
 ## Phase 6: Final Verification
-Run `fastfetch`. You should see the **Arch Linux Logo** running on the `linux-cachyos` kernel. 
+
+Run `fastfetch`. You should see the **Arch Linux Logo** running on the `linux-cachyos` kernel.
+
+### Hardware Status (83JR / Yoga 7 2-in-1 14AKP10 — Verified on CachyOS)
+
+| Component | Status | Notes |
+|---|---|---|
+| Radeon 840M/860M GPU | ✅ Works | `libva-mesa-driver` required for HW accel |
+| XDNA 2 NPU | ✅ Works | `amdxdna` driver via linux-cachyos |
+| OLED touchscreen (10-point) | ✅ Works OOB | Verify: `libinput list-devices` |
+| Stylus (Yoga Pen) | ✅ Works OOB | Pressure + tilt via evdev/libinput |
+| Auto-rotate (tablet mode) | ✅ Works | `iio-sensor-proxy` is a GNOME dependency |
+| Wi-Fi 7 (MT7925e) | ✅ Works | Disable powersave to fix flicker (see Phase 4) |
+| Bluetooth 5.4 | ✅ Works OOB | Same MT7925e chip |
+| IR camera / Howdy | ✅ Works | See Phase 5 |
+| 4 speakers + Dolby Atmos | ✅ Works | Kernel 6.18+ native |
+| Quad-mic array | ✅ Works | Two PipeWire sources (Mic1 + Mic2) |
+| RNNoise (noise cancel) | ✅ Works | Via EasyEffects mic chain |
+| microSD reader | ✅ Works OOB | Standard SDHCI |
+| USB-C DisplayPort 2.1 | ✅ Works OOB | Via mesa + kernel |
+| Fingerprint reader | ➖ N/A | Not present on all 83JR configs |
 
 **Your post-install optimization is complete.**
