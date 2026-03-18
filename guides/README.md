@@ -29,10 +29,10 @@ Every configuration and guide in this repository is built around three primary e
 
 ## Table of Contents
 
+- [Core Philosophy](#core-philosophy--goals)
+- [Quick Start](#quick-start)
 - [Results](#results)
-- [1. Power and Kernel](#1-power-and-kernel)
-- [2. CPU Scheduler](#2-cpu-scheduler-work--efficiency)
-- [3. Audio Setup](#3-audio-setup)
+- [Key Optimizations](#key-optimizations)
 - [Related Guides](#related-guides)
 
 ---
@@ -47,29 +47,25 @@ Every configuration and guide in this repository is built around three primary e
 
 ---
 
-## 1. Power and Kernel
+## Key Optimizations
 
-- **Battery Longevity:** Use the native **Battery Health / Conservation Mode** support in the Desktop Environment (KDE Plasma 6.1+ or GNOME) to limit the charge to 80%
+### Battery & Power
+- **Battery Longevity:** Use the native **Battery Health / Conservation Mode** in your Desktop Environment (KDE Plasma 6.1+ or GNOME) to limit charge to 80%
+- **Results:** ~6.8W - 7.2W idle power, ~8W active light use (9 hours battery life on 70Wh)
 
----
+### CPU Scheduler
+For productive coding and web-browsing, use the eBPF **`scx_bpfland`** scheduler through `scx_loader`.
 
-## 2. CPU Scheduler (Work & Efficiency)
+- **Why `bpfland`?** Unlike `lavd` (gaming-centric), `bpfland` uses a vruntime-based algorithm that excels at prioritizing interactive desktop tasks while aggressively idling background processes
+- **Auto-Power Logic:** The config (`configs/system/scheduler/scx_loader.toml`) uses `["-m", "auto", "-f"]` flags to communicate with `power-profiles-daemon`. On battery, it automatically throttles background tasks and uses efficient cores
+- **Frequency Control:** The `-f` flag enables direct CPU frequency management with `amd_pstate=active` driver
 
-For a productive coding and web-browsing workflow, use the eBPF **`scx_bpfland`** scheduler through `scx_loader`.
+### Audio
+Starting with **Kernel 6.18+**, all 4 speakers work natively via the `alc287-yoga9-bass-spk-pin` quirk.
 
-- **Why `bpfland`?** Unlike `lavd` (which is gaming-centric), `bpfland` uses a vruntime-based algorithm that excels at prioritizing interactive desktop tasks while aggressively idling background processes
-- **Auto-Power Logic:** The config (`configs/system/scheduler/scx_loader.toml`) uses the `["-m", "auto", "-f"]` flags. This allows the scheduler to natively communicate with `power-profiles-daemon`. When on battery, it automatically throttles background tasks and utilizes the most efficient cores, keeping the CPU in deep C-states longer
-- **Frequency Control:** The `-f` flag enables the scheduler to manage CPU frequencies directly, working in tandem with the `amd_pstate=active` driver for maximum efficiency 
-
----
-
-## 3. Audio Setup
-
-Previously, Linux only used the top two speakers by default. Starting with **Kernel 6.18+**, the subwoofers (bass speakers) are now natively supported via the `alc287-yoga9-bass-spk-pin` quirk. This quirk is automatically applied by the kernel, making all 4 speakers work as a single hardware sink out of the box.
-
-- **EasyEffects:** Since the hardware is now fully active, use EasyEffects primarily for spatial depth and physical correction using a Dolby Atmos Impulse Response (IR) file
-- **Presets:** Presets are located in `configs/audio/easyeffects_presets/`
-- **Requirements:** You still need `lsp-plugins-lv2` and `calf` installed for the EQ effects
+- **EasyEffects:** Use for spatial depth and Dolby Atmos-style effects
+- **Presets:** Located in `configs/audio/easyeffects_presets/`
+- **Requirements:** `lsp-plugins-lv2` and `calf` for EQ effects
 
 ---
 
@@ -80,6 +76,8 @@ Previously, Linux only used the top two speakers by default. Starting with **Ker
 
 ## Shared Hardware Reference
 
-- [Hardware Optimization Reference](Hardware_Optimization_Reference.md) consolidates the distro-agnostic steps for EasyEffects, Wi-Fi, and hardware compatibility so both guides can stay focused on their unique flows
+- [Hardware Optimization Reference](Hardware_Optimization_Reference.md) consolidates distro-agnostic steps for hardware compatibility, EasyEffects, Wi-Fi configuration, and troubleshooting
+
+---
 
 Configuration tailored for CachyOS/Fedora using Gemini CLI.

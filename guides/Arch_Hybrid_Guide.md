@@ -13,9 +13,9 @@
 - [Common Hardware Reference](#common-hardware-reference)
 - [Phase 1: Adding CachyOS Power (Kernel & Repos)](#phase-1-adding-cachyos-power-kernel--repos)
 - [Phase 2: The Automatic Safety Net (Btrfs Snapshots)](#phase-2-the-automatic-safety-net-btrfs-snapshots)
-- [Phase 4: System & Power Optimization](#phase-4-system--power-optimization)
-- [Phase 5: Hardware-Accelerated Multimedia](#phase-5-hardware-accelerated-multimedia)
-- [Phase 6: Final Verification](#phase-6-final-verification)
+- [Phase 3: System & Power Optimization](#phase-3-system--power-optimization)
+- [Phase 4: Hardware-Accelerated Multimedia](#phase-4-hardware-accelerated-multimedia)
+- [Phase 5: Final Verification](#phase-5-final-verification)
 
 ---
 
@@ -89,7 +89,7 @@ This setup provides "easy" snapshots that appear directly in your bootloader (Li
 
 ---
 
-## Phase 4: System & Power Optimization
+## Phase 3: System & Power Optimization
 
 1. **ZRAM** (compressed swap-in-RAM — ships enabled by default on CachyOS, verify):
    ```bash
@@ -107,7 +107,7 @@ This setup provides "easy" snapshots that appear directly in your bootloader (Li
 
 ---
 
-## Phase 5: Hardware-Accelerated Multimedia
+## Phase 4: Hardware-Accelerated Multimedia
 
 1. **Video Acceleration:**
    ```bash
@@ -121,7 +121,7 @@ This setup provides "easy" snapshots that appear directly in your bootloader (Li
      # Should show both Mic1 (Digital) and Mic2 (Stereo) sources
      ```
 
-## Phase 6: Final Verification
+## Phase 5: Final Verification
 
 Run `fastfetch`. You should see the **Arch Linux Logo** running on the `linux-cachyos` kernel.
 

@@ -1,5 +1,21 @@
 # Guides Directory Changelog
 
+## 2026-03-18 - Second Refactoring Pass
+
+### Changed
+- **Phase Numbering:** Fixed sequential phase numbering in Arch Hybrid Guide (Phase 3-5 instead of 4-6)
+- **README Structure:** 
+  - Reorganized with clearer sections
+  - Consolidated key optimizations into single section
+  - Improved Table of Contents structure
+  - Added Core Philosophy section for better context
+
+### Improved
+- **Consistency:** Better alignment between README and detailed guides
+- **Navigation:** Clearer section organization and cross-references
+
+---
+
 ## 2026-03-18 - Major Refactoring
 
 ### Removed
