@@ -15,11 +15,17 @@
 | Quad-mic array | ✅ Works | EasyEffects profiles + RNNoise chain |
 | MicroSD reader | ✅ Works OOB | Standard SDHCI support |
 | USB-C DisplayPort 2.1 | ✅ Works | Handled by Mesa + kernel drivers |
+| NPU (Ryzen AI / XDNA 2) | ⚠️ Partial | AMD XDNA driver upstreaming in Linux 6.14 - 7.1. Supported by FastFlowLM; Ollama support is pending. |
 | Fingerprint reader | ➖ N/A | Not present on all hardware SKUs |
 
 ---
 
 Shared hardware optimizations live here so both the Arch and Fedora guides can stay focused on distro-specific work. The steps below are distro-agnostic and apply whenever the Lenovo Yoga 7 14AKP10 (14AKP10 / 83JR) hardware is in use.
+
+## NPU (Neural Processing Unit) Status
+The Ryzen AI (AMD XDNA 2) NPU is the newest component in this stack. The official `amdxdna` Linux kernel driver was introduced in Linux 6.14 and sees expanded features (like power reporting and better upstreaming) in the upcoming Linux 7.0/7.1 kernels. 
+- **FastFlowLM:** The most mature current option for Linux is **FastFlowLM**, a custom lightweight runtime designed specifically for tile-structured NPUs, which allows for highly efficient local LLM inference directly on the NPU.
+- **Ollama:** Official, native XDNA NPU support inside Ollama is actively being tracked and developed (e.g., via upstream integrations with RyzenAI-SW), but you may need to use FastFlowLM or specific forks if you want out-of-the-box NPU offloading today.
 
 ## System Performance
 - **ZRAM:** Arch (CachyOS) ships with zram enabled; on other distros install `zram-generator` if `zramctl` shows no devices.
