@@ -1,0 +1,215 @@
+{
+  "output": {
+    "bass_enhancer#0": {
+      "amount": 8.0,
+      "blend": 0.0,
+      "bypass": false,
+      "floor": 40.0,
+      "harmonics": 10.0,
+      "input-gain": 0.0,
+      "output-gain": 0.0,
+      "scope": 180.0
+    },
+    "blocklist": [],
+    "compressor#0": {
+      "attack": 10.0,
+      "boost-amount": 4.0,
+      "boost-threshold": -72.0,
+      "bypass": false,
+      "dry": -80.0,
+      "input-gain": 0.0,
+      "knee": -6.0,
+      "makeup": 0.0,
+      "mode": "Downward",
+      "output-gain": 0.0,
+      "ratio": 3.5,
+      "release": 80.0,
+      "release-threshold": -100.0,
+      "sidechain": {
+        "lookahead": 0.0,
+        "mode": "RMS",
+        "preamp": 0.0,
+        "reactivity": 5.0,
+        "source": "Middle",
+        "type": "Feed-forward"
+      },
+      "threshold": -12.0,
+      "wet": 0.0
+    },
+    "convolver#0": {
+      "auth-gain": true,
+      "bypass": false,
+      "input-gain": 0.0,
+      "ir-width": 100,
+      "kernel": "Dolby_Atmos_Default.irs",
+      "kernel-path": "/home/bukutsu/.local/share/easyeffects/irs/Dolby_Atmos_Default.irs",
+      "output-gain": 0.0,
+      "wet": 0.0
+    },
+    "crossfeed#0": {
+      "bypass": false,
+      "cutoff": 700.0,
+      "feed": 4.0,
+      "input-gain": 0.0,
+      "output-gain": 0.0
+    },
+    "equalizer#0": {
+      "balance": 0.0,
+      "bypass": false,
+      "input-gain": 0.0,
+      "left": {
+        "band0": {
+          "frequency": 150.0,
+          "gain": 3.0,
+          "mode": "RLC (BT)",
+          "q": 1.0,
+          "type": "Bell"
+        },
+        "band1": {
+          "frequency": 1200.0,
+          "gain": 4.0,
+          "mode": "RLC (MT)",
+          "q": 0.8,
+          "type": "Bell"
+        },
+        "band2": {
+          "frequency": 3000.0,
+          "gain": -2.0,
+          "mode": "BWC (MT)",
+          "q": 1.5,
+          "type": "Bell"
+        },
+        "band3": {
+          "frequency": 8500.0,
+          "gain": 5.5,
+          "mode": "BWC (BT)",
+          "q": 0.7,
+          "type": "Hi-shelf"
+        }
+      },
+      "mode": "IIR",
+      "num-bands": 4,
+      "output-gain": 0.0,
+      "right": {
+        "band0": {
+          "frequency": 150.0,
+          "gain": 3.0,
+          "mode": "RLC (BT)",
+          "q": 1.0,
+          "type": "Bell"
+        },
+        "band1": {
+          "frequency": 1200.0,
+          "gain": 4.0,
+          "mode": "RLC (MT)",
+          "q": 0.8,
+          "type": "Bell"
+        },
+        "band2": {
+          "frequency": 3000.0,
+          "gain": -2.0,
+          "mode": "BWC (MT)",
+          "q": 1.5,
+          "type": "Bell"
+        },
+        "band3": {
+          "frequency": 8500.0,
+          "gain": 5.5,
+          "mode": "BWC (BT)",
+          "q": 0.7,
+          "type": "Hi-shelf"
+        }
+      }
+    },
+    "exciter#0": {
+      "amount": 7.0,
+      "blend": 0.0,
+      "bypass": false,
+      "ceiling": 20000.0,
+      "drive": 8.0,
+      "floor": 1500.0,
+      "input-gain": 0.0,
+      "output-gain": 0.0,
+      "scope": 6000.0
+    },
+    "limiter#0": {
+      "alr": false,
+      "attack": 1.0,
+      "bypass": false,
+      "dithering": "None",
+      "gain-boost": false,
+      "input-gain": 0.0,
+      "lookahead": 1.0,
+      "mode": "Herm Wide",
+      "output-gain": 0.0,
+      "oversampling": "None",
+      "release": 5.0,
+      "stereo-link": 100.0,
+      "threshold": -0.5
+    },
+    "multiband_compressor#0": {
+      "band0": {
+        "attack": 5.0,
+        "boost-amount": 4.0,
+        "boost-threshold": -72.0,
+        "bypass": false,
+        "external-sidechain": false,
+        "knee": -6.0,
+        "makeup": 0.0,
+        "mode": "Downward",
+        "ratio": 3.0,
+        "release": 30.0,
+        "release-threshold": -100.0,
+        "sidechain": {
+          "lookahead": 0.0,
+          "mode": "RMS",
+          "preamp": 0.0,
+          "reactivity": 5.0,
+          "source": "Middle"
+        },
+        "solo": false,
+        "threshold": -12.0
+      }
+    },
+    "spatializer#0": {
+      "bypass": false,
+      "input-gain": 0.0,
+      "mix": 0.75,
+      "output-gain": 0.0,
+      "strength": 0.85
+    },
+    "stereo_tools#0": {
+      "balance-in": 0.0,
+      "balance-out": 0.0,
+      "bypass": false,
+      "delay": 0.0,
+      "dry": -80.0,
+      "input-gain": 0.0,
+      "middle-level": 0.0,
+      "middle-panorama": 0.0,
+      "mode": "LR > LR (Stereo Default)",
+      "output-gain": 0.0,
+      "phase-angle": 0.0,
+      "phase-interpolation": "Cosine",
+      "sc-level": 1.0,
+      "side-balance": 0.0,
+      "side-level": 1.8,
+      "softclip": false,
+      "stereo-base": 0.5,
+      "stereo-phase": 0.0,
+      "wet": 0.0
+    },
+    "plugins_order": [
+      "convolver#0",
+      "spatializer#0",
+      "crossfeed#0",
+      "stereo_tools#0",
+      "equalizer#0",
+      "multiband_compressor#0",
+      "bass_enhancer#0",
+      "exciter#0",
+      "compressor#0",
+      "limiter#0"
+    ]
+  }
+}
