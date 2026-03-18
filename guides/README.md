@@ -6,6 +6,14 @@
 
 This repository contains configuration files, guides, and scripts for optimizing the Lenovo Yoga 7 2-in-1 14AKP10 on Linux.
 
+## Core Philosophy & Goals
+
+Every configuration and guide in this repository is built around three primary engineering objectives:
+
+1. **"Updates Forever" (Longevity & Maintainability):** Building a resilient architecture (utilizing Btrfs snapshots and containerized development) to ride rolling or bleeding-edge updates without the fear of system breakage, eliminating the need to ever reinstall the OS.
+2. **"Make the Most of My Hardware" (Performance):** Utilizing advanced, compiler-optimized environments (CachyOS) and cutting-edge eBPF kernel schedulers (`scx_bpfland`) to extract maximum efficiency, battery life, and UI responsiveness from the AMD Zen 5 architecture.
+3. **"Support Every Part of My Hardware" (Completeness):** Ensuring 100% of the silicon is active—from the 4-speaker Atmos array and IR facial recognition to tracking upstream driver support for the XDNA 2 NPU.
+
 ## Quick Start
 
 1. **Choose Your Distribution:**
