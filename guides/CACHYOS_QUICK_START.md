@@ -1,10 +1,10 @@
-# Lenovo Yoga 7 2-in-1 (14AKP10) System Configuration
+# CachyOS Quick Start — Lenovo Yoga 7 / Slim 7 (14AKP10)
 
-**Target Hardware:** Lenovo Yoga 7 2-in-1 14AKP10 (AMD Ryzen AI 7 350)  
+**Target Hardware:** Lenovo Yoga 7 2-in-1 / Slim 7 14AKP10 (AMD Ryzen AI 7 350)  
 **Primary OS:** CachyOS (Arch-based)  
 **Last Updated:** 2026-03-18
 
-This repository contains configuration files, guides, and scripts for optimizing the Lenovo Yoga 7 2-in-1 14AKP10 on Linux.
+Use this page if you already run CachyOS and just need the high-impact optimizations. If you're installing Arch from scratch or sticking with Fedora, jump to the dedicated guides listed below.
 
 ## Core Philosophy & Goals
 
@@ -17,9 +17,9 @@ Every configuration and guide in this repository is built around three primary e
 ## Quick Start
 
 1. **Choose Your Distribution:**
-   - Already running CachyOS? Use this README for quick optimizations
-   - Fresh Arch install? See [Arch Hybrid Guide](Arch_Hybrid_Guide.md)
-   - Prefer Fedora stability? See [Fedora Optimized Guide](Fedora_Optimized_Guide.md)
+   - Already on CachyOS? Stay here.
+   - Fresh Arch install? Go to [Arch Hybrid Guide](Arch_Hybrid_Guide.md)
+   - Prefer Fedora stability? Use [Fedora Optimized Guide](Fedora_Optimized_Guide.md)
 
 2. **Check Hardware Compatibility:** [Hardware Optimization Reference](Hardware_Optimization_Reference.md#hardware-optimization-reference)
 
@@ -47,11 +47,10 @@ Every configuration and guide in this repository is built around three primary e
 
 ---
 
-## Key Optimizations
+## Core Optimizations
 
 ### Battery & Power
-- **Battery Longevity:** Use the native **Battery Health / Conservation Mode** in your Desktop Environment (KDE Plasma 6.1+ or GNOME) to limit charge to 80%
-- **Results:** ~6.8W - 7.2W idle power, ~8W active light use (9 hours battery life on 70Wh)
+- **Battery Longevity:** Use the native battery health mode in KDE Plasma 6.1+ or GNOME to hold 80% charge.
 
 ### CPU Scheduler
 For productive coding and web-browsing, use the eBPF **`scx_bpfland`** scheduler through `scx_loader`.
@@ -61,11 +60,10 @@ For productive coding and web-browsing, use the eBPF **`scx_bpfland`** scheduler
 - **Frequency Control:** The `-f` flag enables direct CPU frequency management with `amd_pstate=active` driver
 
 ### Audio
-Starting with **Kernel 6.18+**, all 4 speakers work natively via the `alc287-yoga9-bass-spk-pin` quirk.
+With Kernel 6.18+, all 4 speakers work via the `alc287-yoga9-bass-spk-pin` quirk.
 
-- **EasyEffects:** Use for spatial depth and Dolby Atmos-style effects
-- **Presets:** Located in `configs/audio/easyeffects_presets/`
-- **Requirements:** `lsp-plugins-lv2` and `calf` for EQ effects
+- Import EasyEffects presets from `configs/audio/easyeffects_presets/` (ensure `lsp-plugins-lv2`, `calf`, `rnnoise`).
+- Use the RNNoise plugin on the mic input for live noise reduction.
 
 ---
 
@@ -76,7 +74,8 @@ Starting with **Kernel 6.18+**, all 4 speakers work natively via the `alc287-yog
 
 ## Shared Hardware Reference
 
-- [Hardware Optimization Reference](Hardware_Optimization_Reference.md) consolidates distro-agnostic steps for hardware compatibility, EasyEffects, Wi-Fi configuration, and troubleshooting
+- See [SHARED_OPTIMIZATIONS.md](SHARED_OPTIMIZATIONS.md) for hardware-agnostic steps (battery limits, Wi-Fi powersave, audio presets, scripts).
+- For deep dives (hardware tables, troubleshooting), open [Hardware Optimization Reference](Hardware_Optimization_Reference.md).
 
 ---
 

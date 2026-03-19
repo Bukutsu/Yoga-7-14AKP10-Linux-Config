@@ -1,31 +1,33 @@
-# Lenovo Yoga Slim 7 14AKP10 — Arch Hybrid Optimization Guide (v4.0)
+# Lenovo Yoga Slim 7 14AKP10 — Arch Hybrid Guide (v4.1)
 **Target Device:** Lenovo Yoga Slim 7 14AKP10 (AMD Ryzen AI 300 Series)  
-**Goal:** Turn a fresh Arch install into a hybrid workstation with CachyOS performance plus a Btrfs safety net.  
+**Goal:** Turn a fresh Arch install into a CachyOS-powered workstation with a Btrfs safety net.  
 **Base OS:** Arch Linux (any desktop environment)  
-**Kernel:** `linux-cachyos` (stock headers recommended)  
-**Version:** v4.0  
-**Last Updated:** 2026-03-18
+**Kernel:** `linux-cachyos` (with headers)  
+**Version:** v4.1  
+**Last Updated:** 2026-03-19
 
 ---
 
 ## Table of Contents
 - [Hardware Compatibility](#hardware-compatibility)
 - [Common Hardware Reference](#common-hardware-reference)
-- [Phase 1: Adding CachyOS Power (Kernel & Repos)](#phase-1-adding-cachyos-power-kernel--repos)
-- [Phase 2: The Automatic Safety Net (Btrfs Snapshots)](#phase-2-the-automatic-safety-net-btrfs-snapshots)
-- [Phase 3: System & Power Optimization](#phase-3-system--power-optimization)
-- [Phase 4: Hardware-Accelerated Multimedia](#phase-4-hardware-accelerated-multimedia)
+- [Phase 1: Add CachyOS Power (Kernel & Repos)](#phase-1-add-cachyos-power-kernel--repos)
+- [Phase 2: Automatic Safety Net (Btrfs Snapshots)](#phase-2-automatic-safety-net-btrfs-snapshots)
+- [Phase 3: Scheduler + Multimedia](#phase-3-scheduler--multimedia)
+- [Phase 4: Shared Optimizations](#phase-4-shared-optimizations)
 - [Phase 5: Final Verification](#phase-5-final-verification)
 
 ---
 
 ## Hardware Compatibility
-See the [Hardware Optimization Reference](Hardware_Optimization_Reference.md#hardware-optimization-reference) for the complete hardware compatibility table.
+See [Hardware Optimization Reference](Hardware_Optimization_Reference.md#hardware-optimization-reference) for the complete hardware compatibility table.
 
 ## Common Hardware Reference
-Shared hardware tweaks (EasyEffects, Wi-Fi, etc.) live in [Hardware Optimization Reference](Hardware_Optimization_Reference.md). Use that doc whenever the same config is needed on Fedora or Arch, then return here for the distro-specific steps.
+Hardware-agnostic tweaks live in [SHARED_OPTIMIZATIONS.md](SHARED_OPTIMIZATIONS.md). For deeper context and troubleshooting, consult [Hardware_Optimization_Reference.md](Hardware_Optimization_Reference.md).
 
-## Phase 1: Adding CachyOS Power (Kernel & Repos)
+> 🔁 **Shared steps:** Battery limits, Wi-Fi powersave, audio presets, VA-API, and scripts live in [SHARED_OPTIMIZATIONS.md](SHARED_OPTIMIZATIONS.md).
+
+## Phase 1: Add CachyOS Power (Kernel & Repos)
 
 Assuming you have a fresh Arch Linux installation (base + desktop environment), we will now inject the CachyOS optimizations.
 
@@ -56,7 +58,7 @@ Assuming you have a fresh Arch Linux installation (base + desktop environment), 
 
 ---
 
-## Phase 2: The Automatic Safety Net (Btrfs Snapshots)
+## Phase 2: Automatic Safety Net (Btrfs Snapshots)
 
 This setup provides "easy" snapshots that appear directly in your bootloader (Limine, GRUB, or systemd-boot).
 
@@ -89,42 +91,23 @@ This setup provides "easy" snapshots that appear directly in your bootloader (Li
 
 ---
 
-## Phase 3: System & Power Optimization
+## Phase 3: Scheduler + Multimedia
+1. `scx_manager` GUI → Scheduler `scx_bpfland`, Profile `Auto`.
+2. Ensure EasyEffects presets and VA-API per [SHARED_OPTIMIZATIONS.md](SHARED_OPTIMIZATIONS.md).
 
-1. **ZRAM** (compressed swap-in-RAM — ships enabled by default on CachyOS, verify):
-   ```bash
-   zramctl  # Should show a zram0 device. If empty, install zram-generator.
-   ```
-2. **Battery Longevity:** Set the 80% charge limit in your DE (KDE/GNOME) settings.
-3. **Wi-Fi Powersave flicker fix (MT7925e):** The default NetworkManager Wi-Fi powersave setting causes screen flickering on this hardware. Disable it:
-   ```bash
-   sudo cp configs/system/network/disable-wifi-powersave.conf /etc/NetworkManager/conf.d/
-   sudo systemctl restart NetworkManager
-   ```
-   *This sets `wifi.powersave = 2` (disabled). The network reconnects immediately, no reboot needed.*
+**Verify:** `systemctl status scx_loader.service cachyos-settings.service` shows `active`; `vainfo` lists `radeonsi`; EasyEffects chains are engaged.
 
-**Verify:** `zramctl` lists a `zram0`, and `nmcli general status` shows `connected` without `powersave` errors.
-
----
-
-## Phase 4: Hardware-Accelerated Multimedia
-
-1. **Video Acceleration:**
-   ```bash
-   sudo pacman -S libva-mesa-driver
-   ```
-2. **Audio (4-Speaker + Quad-Mic):** All 4 speakers are native in Kernel 6.18+ via `alc287-yoga9-bass-spk-pin`. Import the EasyEffects presets from `configs/audio/easyeffects_presets/` in this repo.
-   * **Noise Cancellation:** Use the **RNNoise** plugin in EasyEffects on the mic input for real-time noise removal.
-   * **Verify mic sources are active:**
-     ```bash
-     pactl list sources | grep -E 'Name:|Description:' | grep alsa_input
-     # Should show both Mic1 (Digital) and Mic2 (Stereo) sources
-     ```
+## Phase 4: Shared Optimizations
+Follow [SHARED_OPTIMIZATIONS.md](SHARED_OPTIMIZATIONS.md) for:
+- Battery health limit (80%)
+- Wi-Fi powersave disable (`wifi.powersave = 2`)
+- ZRAM verification
+- Audio presets, RNNoise chain, Thai font installer
 
 ## Phase 5: Final Verification
 
 Run `fastfetch`. You should see the **Arch Linux Logo** running on the `linux-cachyos` kernel.
 
-For any remaining hardware questions, consult the [Hardware Optimization Reference](Hardware_Optimization_Reference.md) for troubleshooting steps and verification commands.
+Need additional troubleshooting? Check [Hardware_Optimization_Reference.md](Hardware_Optimization_Reference.md).
 
-**Your post-install optimization is complete.**
+**Your Arch → Cachy hybrid is ready.**

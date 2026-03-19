@@ -1,9 +1,9 @@
-# Lenovo Yoga 7 (14AKP10) — Fedora Optimization Guide (v4.0)
-**Goal:** Maximum Reliability (5+ Year Target) + Peak Hardware Optimization.  
+# Lenovo Yoga 7 (14AKP10) — Fedora Optimization Guide (v4.1)
+**Goal:** Maximum reliability (5+ years) with injected performance tuning.  
 **Base OS:** Fedora Workstation (official)  
-**Kernel:** Fedora stock (stable + periodic updates)  
-**Version:** v4.0  
-**Last Updated:** 2026-03-18
+**Kernel:** Fedora stock (periodic updates)  
+**Version:** v4.1  
+**Last Updated:** 2026-03-19
 
 ---
 
@@ -19,15 +19,22 @@
 
 ---
 
-## Hardware Compatibility
-See the [Hardware Optimization Reference](Hardware_Optimization_Reference.md#hardware-optimization-reference) for the complete hardware compatibility table.
+> 🔁 **Shared steps:** Battery limits, Wi-Fi powersave, audio presets, VA-API, and scripts live in [SHARED_OPTIMIZATIONS.md](SHARED_OPTIMIZATIONS.md).
 
-## Common Hardware Reference
-Shared tweaks (scx scheduler, EasyEffects, Wi-Fi, etc.) are documented in [Hardware Optimization Reference](Hardware_Optimization_Reference.md). Use it anytime both guides need the same config or verification steps.
+## Table of Contents
+- [Hardware Compatibility](#hardware-compatibility)
+- [Phase 1: Invincible Core (Reliability & Safety)](#%F0%9F%9B%A1%EF%B8%8F-phase-1-invincible-core-reliability--safety)
+- [Phase 2: Performance Injection (Sched-EXT)](#%E2%9A%A1-phase-2-performance-injection-sched-ext)
+- [Phase 3: Multimedia & Shared Optimizations](#%F0%9F%8E%AC-phase-3-multimedia--shared-optimizations)
+- [Phase 4: Development Environment](#%F0%9F%92%BB-phase-4-development-environment)
+- [Phase 5: Verify](#phase-5-verify)
+
+## Hardware Compatibility
+See [Hardware Optimization Reference](Hardware_Optimization_Reference.md#hardware-optimization-reference) for the full hardware table.
 
 ---
 
-## 🛡️ Phase 1: The "Invincible" Core (Reliability & Safety)
+## 🛡️ Phase 1: Invincible Core (Reliability & Safety)
 We use Fedora's official vetted kernel but add a safety net to ensure you can always "undo" any change.
 
 1. **Install Snapper & DNF Plugin:**
@@ -50,7 +57,7 @@ We use Fedora's official vetted kernel but add a safety net to ensure you can al
 
 ---
 
-## ⚡ Phase 2: The "Performance Injection" (Optimization)
+## ⚡ Phase 2: Performance Injection (Sched-EXT)
 We gain the "CachyOS feel" without replacing the core system kernel.
 
 1. **Enable Sched-EXT (scx) via COPR:**
@@ -69,17 +76,15 @@ We gain the "CachyOS feel" without replacing the core system kernel.
 
 ---
 
-## 🔋 Phase 3: Hardware Longevity (Physical Health)
-To make the laptop physically last 5+ years.
+## 🎬 Phase 3: Multimedia & Shared Optimizations
+Reference [SHARED_OPTIMIZATIONS.md](SHARED_OPTIMIZATIONS.md) for:
+- Battery health limit (80%)
+- Wi-Fi powersave fix (MT7925e)
+- EasyEffects presets + RNNoise
+- VA-API packages (`mesa-va-drivers-freeworld`)
+- Thai font installer script usage
 
-1. **Battery Health (Charge Limit):** 
-   * **KDE:** System Settings -> Power Management -> Advanced -> Set Charge Limit to **80%**.
-   * **GNOME:** Settings -> Power -> Battery Health.
-   *Benefit:* Effectively doubles the lifecycle of your battery by preventing 100% "cooking."
-
-**Verify:** `cat /sys/class/power_supply/BAT0/charge_control_end_threshold` (or KDE/GNOME charge limit UI) reads `80`.
-
----
+**Verify:** `journalctl -u NetworkManager | grep wifi.powersave`, EasyEffects active chains, `vainfo` with `radeonsi`.
 
 ## 💻 Phase 4: Development Environment
 Keep your host system clean by using containers for development.
@@ -95,22 +100,7 @@ Keep your host system clean by using containers for development.
 
 ---
 
-## 🎬 Phase 5: Hardware-Accelerated Multimedia
-Ensure the 14AKP10 hardware is fully utilized for audio/video.
-
-1. **Enable RPM Fusion & Codecs:**
-   ```bash
-   sudo dnf install https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
-   sudo dnf swap ffmpeg-free ffmpeg --allowerasing
-   sudo dnf install mesa-va-drivers-freeworld
-   ```
-2. **Audio Presets:** Import your EasyEffects presets from `configs/audio/easyeffects_presets/` for the 4-speaker Atmos profile.
-
-**Verify:** `rpm -q mesa-va-drivers-freeworld` and `ffmpeg` show the swapped packages, and `pactl list sinks short` reports the four-speaker sink with EasyEffects processing active.
-
----
-
-## Phase 6: Verify
+## Phase 5: Verify
 Run `fastfetch`. You have the **Official Fedora Logo** and **Stock Kernel**, but your system is powered by **`scx_bpfland`**, has a **Btrfs Safety Net**, and is physically protected for a long life.
 
 **Your Yoga 7 is now a high-integrity professional workstation.**

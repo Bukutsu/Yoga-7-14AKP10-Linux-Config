@@ -1,5 +1,21 @@
 # Guides Directory Changelog
 
+## 2026-03-19 - Shared Optimizations Extraction
+
+### Added
+- **SHARED_OPTIMIZATIONS.md:** New centralized document for battery limits, Wi-Fi powersave, audio presets, NPU status, VA-API, verification checklist, and Thai font installer usage.
+
+### Changed
+- **guides/README.md → CACHYOS_QUICK_START.md:** Renamed and clarified as the CachyOS-first entry point.
+- **Root README:** Reframed for end-users with quick-start cards for CachyOS, Arch Hybrid, and Fedora guides.
+- **Arch & Fedora Guides:** Phases realigned, duplicated content replaced with links to the shared document, and tables of contents refreshed.
+
+### Improved
+- **Maintainability:** Single source for distro-agnostic steps.
+- **Navigation:** Consistent cross-links between guides, shared doc, and hardware reference.
+
+---
+
 ## 2026-03-18 - Second Refactoring Pass
 
 ### Changed
