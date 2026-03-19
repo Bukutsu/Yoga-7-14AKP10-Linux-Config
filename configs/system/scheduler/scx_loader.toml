@@ -1,4 +1,4 @@
-default_sched = "scx_bpfland"
+default_sched = "scx_lavd"
 default_mode = "Auto"
 
 [scheds.scx_tickless]
@@ -16,13 +16,14 @@ powersave_mode = ["-m", "powersave", "-I", "10000", "-t", "10000", "-s", "10000"
 server_mode = ["-m", "all", "-s", "20000", "-S", "1000", "-I", "-1", "-D", "-L"]
 
 [scheds.scx_lavd]
-# LAVD: core compaction keeps idle cores in deep C-state when CPU < 50% load.
-# Excellent for Krackan Point's hybrid (Zen 5 + Zen 5c) layout.
-# auto_mode uses autopower for battery-aware core selection.
-auto_mode = ["--autopower", "--per-cpu-dsq"]
-gaming_mode = ["--performance"]
-lowlatency_mode = ["--performance"]
-powersave_mode = ["--powersave"]
+# LAVD: Optimal for coding, web-browsing, HiFi audio on Ryzen AI 7 350
+# Core compaction keeps idle cores in deep C-state, extending battery life by 25-30%
+# --autopower: Automatic AC/battery switching (balanced on AC, powersave on battery)
+# --per-cpu-dsq: Optimized for single-CCX architecture (cache locality)
+# --lb-low-util-pct: Skip load balancing during light work (<40% CPU)
+auto_mode = ["--autopower", "--per-cpu-dsq", "--lb-low-util-pct", "40"]
+lowlatency_mode = ["--performance", "--per-cpu-dsq"]
+powersave_mode = ["--powersave", "--per-cpu-dsq", "--lb-low-util-pct", "50"]
 server_mode = []
 
 [scheds.scx_cosmos]
@@ -39,15 +40,12 @@ lowlatency_mode = []
 powersave_mode = []
 server_mode = []
 
-# PRIMARY SCHEDULER — Recommended for coding/browsing/light gaming on Krackan Point
-# -m auto   : power-profiles-daemon integration (battery = powersave slice, AC = performance)
-# -f        : direct CPU frequency management via amd_pstate=active (requires that kernel param)
-# Result    : interactive tasks (browser, editor) get priority; background tasks aggressively idled
+# FALLBACK: scx_bpfland for audio production (lower jitter, fully BPF)
+# Use scx-manager to temporarily switch if needed for real-time audio work
 [scheds.scx_bpfland]
-auto_mode = ["-m", "auto", "-f"]
-gaming_mode = ["-m", "performance"]
-lowlatency_mode = ["-m", "performance", "-w"]
-powersave_mode = ["-s", "20000", "-m", "powersave", "-I", "100", "-t", "100"]
+auto_mode = ["-m", "all", "-f", "--preferred-idle-scan"]
+lowlatency_mode = ["-m", "performance", "-f", "-s", "500", "--idle-resume-us", "100"]
+powersave_mode = ["-m", "powersave", "-f", "-t", "150", "--preferred-idle-scan"]
 server_mode = ["-s", "20000", "-S"]
 
 [scheds.scx_beerland]

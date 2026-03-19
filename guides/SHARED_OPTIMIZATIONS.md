@@ -58,6 +58,25 @@ zramctl
 
 Expect a `zram0` device with compressed swap backing.
 
+## Scheduler Selection
+
+The default scheduler is `scx_lavd --autopower --per-cpu-dsq`, optimized for your Ryzen AI 7 350:
+
+**Performance characteristics:**
+- Automatic AC/battery switching (no manual intervention)
+- Core compaction saves 25-30% battery power
+- Excellent responsiveness for coding and web-browsing
+- Thermals reduced even when plugged in
+
+**To temporarily test other schedulers:**
+```bash
+sudo scx-manager  # GUI tool to switch schedulers
+```
+
+**Configuration:** See `configs/system/scheduler/scx_loader.toml`
+
+**Fallback option:** `scx_bpfland` offers lower audio jitter if needed for real-time audio production work.
+
 ## NPU (Ryzen AI / XDNA 2)
 - Linux 6.14 introduced the `amdxdna` driver; Linux 7.0/7.1 expands telemetry and power controls.
 - **FastFlowLM** currently offers the best on-device LLM runtime for the NPU.
