@@ -1,128 +1,68 @@
-# System Configuration - Lenovo Yoga 7 (14AKP10)
+# System Config
 
-**Hardware:** AMD Ryzen AI 7 350 (Strix Point) | **OS:** CachyOS | **Goal:** Maximum performance & battery life
+Personal Linux configuration files for the **Lenovo Yoga 7 2-in-1 14AKP10** (AMD Ryzen AI 7 350).
 
-A single repository containing optimized configurations for the Lenovo Yoga 7 2-in-1 (14AKP10) on CachyOS. Includes scheduler tuning, audio presets, power management, and hardware compatibility guides.
+> Treat as reference material, not gospel.
 
 ---
 
-## Quick Start
+## Hardware
 
-**Already on CachyOS?** Jump straight to `docs/setup-guide.md` for step-by-step optimization.
-
-**Setting up from scratch?**
-1. Install CachyOS on your Yoga 7
-2. Follow `docs/setup-guide.md`
-3. Deploy scheduler config via `docs/scheduler-deployment.md`
+- **Laptop**: Lenovo Yoga 7 2-in-1 14AKP10 (83JR)
+- **CPU**: AMD Ryzen AI 7 350 w/ Radeon 860M (Strix Point, Zen 5)
+- **RAM**: 32GB
+- **Storage**: 1TB NVMe SSD
+- **WiFi**: Realtek RTL8922AE (WiFi 7)
+- **OS**: Arch Linux (CachyOS kernel)
 
 ---
 
 ## What's Inside
 
-| Path | Purpose |
-|:---|:---|
-| **docs/setup-guide.md** | Complete CachyOS setup guide for Ryzen AI 7 350 |
-| **docs/scheduler-deployment.md** | Step-by-step scheduler deployment (scx_lavd) |
-| **configs/system/scheduler/scx_loader.toml** | Optimized scheduler configuration (auto/gaming/power-saver modes) |
-| **configs/audio/easyeffects_presets/** | Audio EQ & effect presets for the 4-speaker system |
-| **configs/system/network/** | Wi-Fi powersave fix (MT7925e flicker) |
-| **scripts/install_fedora_thai_config.sh** | Thai font configuration installer |
+### `configs/system/scheduler/scx_loader.toml`
+sched-ext (`scx_lavd`) scheduler profiles tuned for AMD Strix Point.
 
----
-
-## Philosophy
-
-**Solid Core, Liquid Edge:**
-- Start with a stable, official OS (CachyOS with optimized linux-cachyos kernel)
-- Add reversible, safety-net optimizations (Btrfs snapshots, containerized environments)
-- Inject hardware-specific performance tuning (eBPF scheduler, power profiles, audio tweaks)
-
-The result: A workstation that stays reliable for years while extracting maximum efficiency from the Ryzen AI platform.
-
----
-
-## Repository Structure
-
+Core mapping (ACPI-verified):
 ```
-System_Config/
-├── README.md                          # This file
-├── docs/
-│   ├── setup-guide.md                # Complete optimization guide
-│   └── scheduler-deployment.md        # Scheduler deployment procedure
-├── configs/
-│   ├── system/scheduler/             # scx_loader.toml (scheduler config)
-│   ├── system/network/               # Network fixes (Wi-Fi powersave)
-│   ├── system/power/                 # Power management configs
-│   ├── audio/easyeffects_presets/    # Audio presets (speakers, mic)
-│   └── display/                      # Display optimization
-├── scripts/
-│   └── install_fedora_thai_config.sh # Thai font installer
-└── [other dirs: .git, etc.]
+P-Tier1: cores 4, 6  (ACPI perf 208, fastest)
+P-Tier2: core  0      (ACPI perf 202)
+P-Tier3: core  2      (ACPI perf 196)
+E-Cores: cores 1,3,5,7 (ACPI perf 135, ~2.0GHz max)
 ```
+Shared 16MB L3. Single die.
+
+Powersave mode routes tasks to **E-cores first** under light load, with `lb-low-util-pct=70` to skip periodic load balancing.
+
+### `configs/system/network/disable-wifi-powersave.conf`
+Disables WiFi runtime power management for stability on the RTL8922AE.
+
+### `configs/audio/easyeffects_presets/`
+Noise reduction and EQ presets for various microphones.
 
 ---
 
-## Hardware Overview
+## Key Findings
 
-| Component | Status | Notes |
-|:---|:---|:---|
-| **CPU** | ✅ | AMD Ryzen AI 7 350 (4 P-cores + 4 E-cores, 5.1/3.5 GHz) |
-| **GPU** | ✅ | Radeon 840M with VA-API hardware acceleration |
-| **Display** | ✅ | 14" OLED touchscreen + stylus (Yoga Pen) |
-| **Audio** | ✅ | 4-speaker Dolby Atmos (Kernel 6.18+) |
-| **Wi-Fi** | ✅ | Wi-Fi 7 (MT7925e) – powersave disabled to prevent flicker |
-| **Bluetooth** | ✅ | Bluetooth 5.4 (MT7925e) |
-| **Microphone** | ✅ | Quad-mic array with RNNoise noise reduction |
-| **Camera** | ✅ | IR camera (facial recognition with Howdy) |
-| **Battery** | ✅ | 70Wh – 80% charge limit recommended for longevity |
-| **NPU** | ⚠️ | Ryzen AI / XDNA 2 – Driver support in Linux 6.14+ (FastFlowLM available) |
+### SCX LAVD Powersave Mode
 
-For detailed hardware compatibility and troubleshooting, see `docs/setup-guide.md#hardware-compatibility`.
+The powersave profile routes tasks to **E-cores first**. Strix Point E-cores max at ~2GHz and draw significantly less power than P-cores. With `lb-low-util-pct=70`, periodic load balancing is suppressed until 70% system utilization -- eliminating unnecessary cross-core migrations for typical desktop workloads.
+
+### Don't Use TLP on AMD
+
+Use `power-profiles-daemon` instead. TLP interferes with AMD's ACPI platform profile integration.
 
 ---
 
-## Key Optimizations
+## Quick Setup
 
-### 1. CPU Scheduler (scx_lavd)
-- **Latency-Aware Virtual Deadline** scheduler for interactive responsiveness
-- **Core compaction:** Prioritizes 5.1GHz P-cores → 25-30% battery improvement
-- **Auto AC/Battery switching:** Automatically adjusts profile based on power source
-- **Expected battery life:** ~11-12 hours (vs. ~9 hours baseline)
-
-### 2. Power Management
-- 80% battery charge limit (extends lifespan)
-- Power profiles daemon integration (balanced/power-saver/performance)
-- ZRAM enabled (compressed RAM)
-
-### 3. Audio
-- 4-speaker setup with Dolby Atmos positioning
-- EasyEffects presets for corrected audio profile
-- Quad-mic array with RNNoise for live noise reduction
-
-### 4. Graphics
-- VA-API hardware acceleration (11-12W video playback vs. 14-16W software)
-- Radeon 840M support
-
-### 5. Network
-- Wi-Fi powersave disabled (prevents MT7925e flicker)
+1. Copy configs to their destinations
+2. Restart the relevant services
+3. Reboot
 
 ---
 
-## Getting Started
+## Sources
 
-1. **Read `docs/setup-guide.md`** for the complete optimization walkthrough
-2. **Deploy scheduler config** using `docs/scheduler-deployment.md`
-3. **Apply optimizations** (battery limit, audio presets, Wi-Fi fix, etc.)
-4. **Verify everything** with the checklist in `docs/setup-guide.md`
-
----
-
-## Support & Feedback
-
-For issues, questions, or suggestions:
-- Check `docs/setup-guide.md#troubleshooting` first
-- Report bugs at: https://github.com/anomalyco/opencode
-
----
-
-**Maintained using:** Gemini CLI | **Last Updated:** 2026-03-20
+- [CachyOS Wiki - sched-ext](https://wiki.cachyos.org/configuration/sched-ext/)
+- [sched-ext/scx GitHub](https://github.com/sched-ext/scx)
+- [archlinux.org - CPU Frequency Scaling](https://wiki.archlinux.org/title/CPU_Frequency_Scaling)
