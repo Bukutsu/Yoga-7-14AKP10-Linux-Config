@@ -19,59 +19,41 @@ server_mode = ["-m", "all", "-s", "20000", "-S", "1000", "-I", "-1", "-D", "-L"]
 # LAVD: Optimized for Ryzen AI 7 350 (Shared 16MB L3 CCX)
 # ACPI highest_perf verified: cores 0,2,4,6=196 (max 5.09GHz) | cores 1,3,5,7=135 (max 3.51GHz)
 # All perf=196 cores are equal (no sub-tiers). SMT siblings share same perf rating.
-# --autopower: Dynamic AC/Battery switching via power-profiles-daemon
-# --per-cpu-dsq: Critical for Zen 5 single-CCX L3 cache locality
-# --lb-low-util-pct 10: Balanced; skips periodic load balancing under light load
-# --no-use-em: Bypasses kernel Energy Model in favor of our hardcoded topology
-# --cpu-pref-order: Perf=196 cores first (0,2,4,6), then perf=135 cores (1,3,5,7)
-# --virt-llc=4-8: Virtual LLC partitioning (AMD Strix Point single-die design)
-# --preempt-shift 4: Increases preemption speed for interactive tasks (UI/Audio)
-# --lb-local-dsq-util-pct 20: Bypasses complex logic for faster FIFO dispatch under low load
-# --slice-min-us 200: Lowers minimum switch threshold to 0.2ms for ultra-snappy feel
+# --autopower: Syncs with power-profiles-daemon (performance/balanced/power-saver)
+# --cpu-pref-order: Route tasks to perf=196 cores first, then perf=135
+# --lb-low-util-pct: Skip periodic load balancing under light load
+# Minimal flags for maximum stability across scx_lavd updates
 auto_mode = [
     "--autopower",
-    "--per-cpu-dsq",
-    "--lb-low-util-pct", "10",
-    "--no-use-em",
     "--cpu-pref-order", "4,12,6,14,0,8,2,10,1,3,5,7,9,11,13,15",
-    "--virt-llc=4-8",
-    "--preempt-shift", "4",
-    "--lb-local-dsq-util-pct", "20",
-    "--slice-min-us", "200"
+    "--lb-low-util-pct", "10"
 ]
-# Maximum Performance Mode: All cores active, perf=196 cores prioritized, full throughput
-# Use Cases: Video encoding, compilation, data processing, "I need speed NOW" tasks
-# PPD Mapping: This activates when power-profiles-daemon is set to "performance"
+# Maximum Performance: All cores active, perf=196 cores prioritized
+# Use Cases: Video encoding, compilation, "I need speed NOW"
+# PPD Mapping: Activates when power-profiles-daemon is set to "performance"
 gaming_mode = [
-    "--performance",                  # All cores active, no core compaction
-    "--per-cpu-dsq",                  # L1/L2 cache locality for parallel workloads
-    "--cpu-pref-order", "4,12,6,14,0,8,2,10,1,3,5,7,9,11,13,15",  # perf=196 cores first
-    "--virt-llc=4-8",                 # Cache partitioning for compute-heavy threads
-    "--lb-low-util-pct", "0"          # Always balance load (maximize all-core utilization)
-]
-# Low-Latency Mode: Perf=196 cores only + No Preemption + Virtual LLC
-lowlatency_mode = [
     "--performance",
-    "--per-cpu-dsq",
-    "--no-preemption",
-    "--cpu-pref-order", "4,12,6,14,0,8,2,10",
-    "--virt-llc=4-8",
-    "--slice-min-us", "100"
+    "--cpu-pref-order", "4,12,6,14,0,8,2,10,1,3,5,7,9,11,13,15",
+    "--lb-low-util-pct", "0"
 ]
-# Maximum Battery Mode: E-cores prioritized, aggressive power saving, reduced overhead
-# Use Cases: Web browsing, document editing, light coding, "I need battery NOW"
-# PPD Mapping: This activates when power-profiles-daemon is set to "power-saver"
-# Tradeoff: UI may feel 1-2ms slower for 15-25% better battery life
+# Balanced: Core compaction enabled, mix of power and performance
+# Use Cases: Everyday desktop usage
+# PPD Mapping: Activates when power-profiles-daemon is set to "balanced"
+balanced_mode = [
+    "--balanced",
+    "--cpu-pref-order", "4,12,6,14,0,8,2,10,1,3,5,7,9,11,13,15",
+    "--lb-low-util-pct", "25"
+]
+# Maximum Battery: Core compaction, perf=135 cores prioritized
+# Use Cases: Web browsing, document editing, light coding
+# Tradeoff: UI may feel slightly less responsive for better battery life
+# PPD Mapping: Activates when power-profiles-daemon is set to "power-saver"
 powersave_mode = [
-    "--powersave",                    # Core compaction enabled
-    "--per-cpu-dsq",                  # Cache locality (less DRAM = less power)
-    "--lb-low-util-pct", "70",        # Skip periodic balancing until 70% system load
-    "--lb-local-dsq-util-pct", "50",  # Simple FIFO dispatching up to 50% load
-    "--cpu-pref-order", "4,12,6,14,0,8,2,10,1,3,5,7,9,11,13,15",  # perf=196 first, then perf=135
-    "--virt-llc=4-8",                 # Cache efficiency (prevent expensive DRAM accesses)
-    "--slice-max-us", "10000",        # Longer 10ms slices (fewer context switches)
-    "--slice-min-us", "1500"          # Less aggressive 1.5ms minimum
+    "--powersave",
+    "--cpu-pref-order", "4,12,6,14,0,8,2,10,1,3,5,7,9,11,13,15",
+    "--lb-low-util-pct", "70"
 ]
+lowlatency_mode = []  # Use balanced or gaming instead
 server_mode = []
 
 [scheds.scx_cosmos]
