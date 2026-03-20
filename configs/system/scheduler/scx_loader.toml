@@ -16,45 +16,45 @@ powersave_mode = ["-m", "powersave", "-I", "10000", "-t", "10000", "-s", "10000"
 server_mode = ["-m", "all", "-s", "20000", "-S", "1000", "-I", "-1", "-D", "-L"]
 
 [scheds.scx_lavd]
-# LAVD: Omega-Optimized for Ryzen AI 7 350 (Shared 16MB L3 CCX)
-# Core Mapping (ACPI-verified): P-Tier1 (4,6) | P-Tier2 (0) | P-Tier3 (2) | E-Cores (1,3,5,7)
-# ACPI highest_perf values: cores 4,6=208 (fastest) > 0=202 > 2=196 > 1,3,5,7=135 (E-cores)
-# --autopower: Dynamic AC/Battery switching
+# LAVD: Optimized for Ryzen AI 7 350 (Shared 16MB L3 CCX)
+# ACPI highest_perf verified: cores 0,2,4,6=196 (max 5.09GHz) | cores 1,3,5,7=135 (max 3.51GHz)
+# All perf=196 cores are equal (no sub-tiers). SMT siblings share same perf rating.
+# --autopower: Dynamic AC/Battery switching via power-profiles-daemon
 # --per-cpu-dsq: Critical for Zen 5 single-CCX L3 cache locality
-# --lb-low-util-pct 10: Balanced; keeps micro-tasks on E-cores but uses P-cores for any real work
+# --lb-low-util-pct 10: Balanced; skips periodic load balancing under light load
 # --no-use-em: Bypasses kernel Energy Model in favor of our hardcoded topology
-# --cpu-pref-order: Hardware-verified order: Fastest P-cores -> P-SMT -> Slower P-cores -> E-cores
-# --virt-llc=4-8: Partitions the shared 16MB L3 to protect P-core data from E-core eviction
+# --cpu-pref-order: Perf=196 cores first (0,2,4,6), then perf=135 cores (1,3,5,7)
+# --virt-llc=4-8: Virtual LLC partitioning (AMD Strix Point single-die design)
 # --preempt-shift 4: Increases preemption speed for interactive tasks (UI/Audio)
-# --lb-local-dsq-util-pct 20: Bypasses complex logic for faster "Instant FIFO" path during low load
-# --slice-min-us 200: Lowers the minimum switch threshold to 0.2ms for ultra-snappy feel
+# --lb-local-dsq-util-pct 20: Bypasses complex logic for faster FIFO dispatch under low load
+# --slice-min-us 200: Lowers minimum switch threshold to 0.2ms for ultra-snappy feel
 auto_mode = [
-    "--autopower", 
-    "--per-cpu-dsq", 
-    "--lb-low-util-pct", "10", 
-    "--no-use-em", 
-    "--cpu-pref-order", "4,6,12,14,0,8,2,10,1,3,5,7,9,11,13,15",
+    "--autopower",
+    "--per-cpu-dsq",
+    "--lb-low-util-pct", "10",
+    "--no-use-em",
+    "--cpu-pref-order", "4,12,6,14,0,8,2,10,1,3,5,7,9,11,13,15",
     "--virt-llc=4-8",
     "--preempt-shift", "4",
     "--lb-local-dsq-util-pct", "20",
     "--slice-min-us", "200"
 ]
-# Maximum Performance Mode: All cores active, fastest P-cores prioritized, full throughput
+# Maximum Performance Mode: All cores active, perf=196 cores prioritized, full throughput
 # Use Cases: Video encoding, compilation, data processing, "I need speed NOW" tasks
 # PPD Mapping: This activates when power-profiles-daemon is set to "performance"
 gaming_mode = [
     "--performance",                  # All cores active, no core compaction
     "--per-cpu-dsq",                  # L1/L2 cache locality for parallel workloads
-    "--cpu-pref-order", "4,6,12,14,0,8,2,10,1,3,5,7,9,11,13,15",  # ACPI-verified fastest-first
+    "--cpu-pref-order", "4,12,6,14,0,8,2,10,1,3,5,7,9,11,13,15",  # perf=196 cores first
     "--virt-llc=4-8",                 # Cache partitioning for compute-heavy threads
     "--lb-low-util-pct", "0"          # Always balance load (maximize all-core utilization)
 ]
-# Low-Latency Mode: Restricted to Zen 5 Physical Cores + No Preemption + Virtual LLC
+# Low-Latency Mode: Perf=196 cores only + No Preemption + Virtual LLC
 lowlatency_mode = [
-    "--performance", 
-    "--per-cpu-dsq", 
-    "--no-preemption", 
-    "--cpu-pref-order", "4,6,12,14,0,8,2,10",
+    "--performance",
+    "--per-cpu-dsq",
+    "--no-preemption",
+    "--cpu-pref-order", "4,12,6,14,0,8,2,10",
     "--virt-llc=4-8",
     "--slice-min-us", "100"
 ]
@@ -67,7 +67,7 @@ powersave_mode = [
     "--per-cpu-dsq",                  # Cache locality (less DRAM = less power)
     "--lb-low-util-pct", "70",        # Skip periodic balancing until 70% system load
     "--lb-local-dsq-util-pct", "50",  # Simple FIFO dispatching up to 50% load
-    "--cpu-pref-order", "1,3,5,7,9,11,13,15,0,2,4,6,8,10,12,14",  # E-CORES FIRST for battery
+    "--cpu-pref-order", "4,12,6,14,0,8,2,10,1,3,5,7,9,11,13,15",  # perf=196 first, then perf=135
     "--virt-llc=4-8",                 # Cache efficiency (prevent expensive DRAM accesses)
     "--slice-max-us", "10000",        # Longer 10ms slices (fewer context switches)
     "--slice-min-us", "1500"          # Less aggressive 1.5ms minimum
