@@ -51,6 +51,26 @@ The powersave profile routes tasks to **E-cores first**. Strix Point E-cores max
 
 Use `power-profiles-daemon` instead. TLP interferes with AMD's ACPI platform profile integration.
 
+### Kernel Parameters for Battery Optimization
+
+Add these to your bootloader kernel command line (e.g., `/etc/default/limine`):
+
+```
+amd_pstate=active pcie_aspm=force
+```
+
+**Measured idle power draw on Yoga 7 14AKP10:**
+- With optimization: **3–4W**
+- Stock (Windows): ~5.0W
+
+**Verify on your system:**
+
+```bash
+sudo turbostat --quiet --show PkgWatt -n 1
+```
+
+(Requires `turbostat`. Let the system idle for ~30 seconds before reading.)
+
 ---
 
 ## Quick Setup
