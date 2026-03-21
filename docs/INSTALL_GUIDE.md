@@ -1,4 +1,4 @@
-# Yoga 7 Strix Point: Pure Arch + GRUB Installation Guide
+# Yoga 7 Strix Point: Pure Arch + Limine Installation Guide
 
 **Goal**: Maximum longevity + verified 3–4W idle power efficiency.
 
@@ -13,7 +13,7 @@
    ```
 3. Run `archinstall` with these options:
    *   **Disk**: `Btrfs` (snapshots for safety).
-   *   **Bootloader**: `GRUB` (maximum longevity).
+   *   **Bootloader**: `Limine` (perfect for single kernel + Btrfs).
    *   **Kernel**: `linux`.
    *   **Graphics**: `AMD / ATI (open-source)`.
    *   **Audio**: `Pipewire`.
@@ -43,18 +43,18 @@ sudo pacman -S \
 
 ---
 
-## Phase 4: Apply Kernel Parameters (GRUB)
-Edit `/etc/default/grub`:
+## Phase 4: Apply Kernel Parameters (Limine)
+Edit your Limine configuration (typically `/etc/default/limine` or `/boot/limine/limine.conf` depending on how it was installed):
 ```bash
-sudo micro /etc/default/grub
+sudo micro /etc/default/limine
 ```
-Find `GRUB_CMDLINE_LINUX_DEFAULT` and add your verified flags:
+Find your kernel command line entry and append your verified flags:
 ```text
-GRUB_CMDLINE_LINUX_DEFAULT="quiet nowatchdog splash rw amd_pstate=active pcie_aspm=force"
+amd_pstate=active pcie_aspm=force
 ```
-Then regenerate the GRUB config:
+If using the wrapper script, update Limine:
 ```bash
-sudo grub-mkconfig -o /boot/grub/grub.cfg
+sudo limine-update
 ```
 
 ---
