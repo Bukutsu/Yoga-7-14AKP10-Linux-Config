@@ -66,10 +66,10 @@ amd_pstate=active pcie_aspm=force
 **Verify on your system:**
 
 ```bash
-sudo turbostat --quiet --show PkgWatt -n 1
+sudo powertop
 ```
 
-(Requires `turbostat`. Let the system idle for ~30 seconds before reading.)
+(Press Tab to navigate to the Summary tab and check "Power Consumption".)
 
 ---
 
