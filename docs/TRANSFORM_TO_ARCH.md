@@ -46,12 +46,18 @@ sudo pacman -Syy
 ```
 *(Your installed CachyOS packages are now considered "foreign" or local packages.)*
 
-**3. Swap the Kernel**
-Move back to the standard Arch kernel to ensure future compatibility:
+**3. Swap the Kernel and Clean up Bootloader**
+Move back to the standard Arch kernel and remove the CachyOS kernel to prevent duplicate menu entries:
 ```bash
 sudo pacman -S linux linux-headers
+sudo pacman -Rs linux-cachyos linux-cachyos-headers
 ```
-*Note: Remember to update your Limine bootloader configuration (`/etc/default/limine`) to point to the new `vmlinuz-linux` kernel and run `sudo limine-update`.*
+Update your Limine configuration (usually `/etc/default/limine`) to ensure your kernel parameters (like `amd_pstate=active pcie_aspm=force`) are preserved for the new kernel, then regenerate the bootloader config:
+```bash
+sudo limine-mkinitcpio
+sudo limine-update
+```
+*(Note: If a CachyOS entry still appears in the boot menu, you may need to manually remove its `ENTRY` block from `/boot/limine/limine.conf` and run `limine-update` again.)*
 
 **4. Replace Scheduler Tools**
 Install the official upstream versions of the schedulers from the Arch `extra` repository:
