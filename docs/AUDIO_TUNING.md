@@ -35,9 +35,11 @@ Upon rebooting, your woofers will be active, providing a significantly fuller so
 
 ---
 
-## 2. EasyEffects "Perfect Tuning" Preset
+## 2. EasyEffects "Dolby DAX3" Extracted Presets
 
-Even with all 4 speakers working, laptop speakers need heavy EQ and compression to sound good. We have crafted a custom **Yoga_7_Perfect_Tuning** preset that balances clarity, bass depth, and stereo width without relying on external impulse response (IRS) files.
+To truly replicate the Windows sound experience, we use presets extracted directly from Lenovo's official Dolby DAX3 Windows audio drivers. The presets provided in this repository are from the ThinkPad Z16 Gen 1 (which shares a very similar 4-speaker, ALC3306 hardware design with your Yoga).
+
+These presets use a "Convolver" plugin to load an Impulse Response (IRS) file—an acoustic measurement that corrects the physical limitations of your laptop chassis and perfectly mimics Dolby Atmos spatial widening and EQ.
 
 ### Installation
 
@@ -45,15 +47,26 @@ Even with all 4 speakers working, laptop speakers need heavy EQ and compression 
 ```bash
 sudo pacman -S easyeffects
 ```
-2. Open EasyEffects, go to **Preferences** (top-right menu) and enable **Launch Service at System Startup**.
-3. Go to the **Presets** menu (top-left).
-4. Click **Import Preset** and select the `Yoga_7_Perfect_Tuning.json` file located in the `configs/audio/easyeffects_presets/` directory of this repository.
-5. Select the imported preset and click **Load**.
+*(Make sure optional dependencies like `lsp-plugins-lv2`, `zam-plugins-lv2`, and `mda.lv2` are installed if you want full effect compatibility).*
 
-### What this preset does:
-*   **Stereo Tools**: Widens the soundstage to mimic Dolby Atmos spatial audio.
-*   **Equalizer**: Boosts the low-mids (80-160Hz) to give body to vocals, cuts harsh frequencies at 3.5kHz, and adds "air" at 11kHz.
-*   **Multiband Compressor**: Squashes harsh peaks in the audio automatically.
-*   **Bass Enhancer**: Generates sub-bass harmonics (40Hz floor) that trick your ears into hearing deep bass the physical speakers can't produce.
-*   **Exciter**: Adds slight saturation to make the audio "pop" and feel less muddy.
-*   **Compressor & Limiter**: Safely maximizes the laptop's volume output without allowing the speakers to crackle or blow out.
+2. Create the necessary EasyEffects directories if they don't exist:
+```bash
+mkdir -p ~/.config/easyeffects/irs
+mkdir -p ~/.config/easyeffects/output
+```
+
+3. Copy the extracted Dolby files from this repository to your local EasyEffects config:
+```bash
+cp configs/audio/easyeffects_irs/*.irs ~/.config/easyeffects/irs/
+cp configs/audio/easyeffects_presets/ThinkPad_Z16_Dolby/*.json ~/.config/easyeffects/output/
+```
+
+4. Open EasyEffects, go to **Preferences** (top-right menu) and enable **Launch Service at System Startup**.
+5. Go to the **Presets** menu (top-left). You will now see a list of `Z16-` presets (e.g., `Z16-Dynamic-Balanced`, `Z16-Music-Detailed`).
+6. Select **Z16-Dynamic-Balanced** (the default Windows experience) and click **Load**.
+
+### What these presets do:
+*   **Convolver (IRS)**: Accurately replicates Lenovo's Dolby Atmos acoustic correction curve specifically designed for this chassis style.
+*   **Stereo Widening (`stereo_tools`)**: Widens the soundstage to match the cinematic feel of Dolby.
+*   **Targeted EQ (`equalizer`)**: Exact frequency boosts and cuts pulled from the official Windows driver XML files.
+*   **Maximized Loudness (`limiter`)**: Smooths out volume spikes and pushes the average loudness up safely without letting the speakers clip, crackle, or distort.
