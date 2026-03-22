@@ -98,6 +98,19 @@ sudo cp Yoga-7-14AKP10-Linux-Config/configs/system/network/disable-wifi-powersav
 
 ---
 
+## Phase 9: Hardware Polish (Optional)
+
+### Windows Hello-style Face Unlock (IR Camera)
+The Yoga 7 features a hardware Infrared camera that works perfectly on Linux for facial recognition authentication (sudo, login, lock screen).
+*   **Tool**: `howdy`
+*   **Installation**: Follow the official [Arch Wiki for Howdy](https://wiki.archlinux.org/title/Howdy) to install and configure the PAM modules for your specific Desktop Environment.
+
+### Battery Conservation Mode
+If you leave your laptop plugged in frequently, you can preserve the battery's chemical lifespan by limiting the hardware charge to 80%.
+*   **GNOME/KDE**: This is natively supported. Look for "Charge Limit" or "Conservation Mode" in your desktop environment's Power settings.
+
+---
+
 ## Exit Strategy (If CachyOS Disappears)
 1. Remove CachyOS repo from `/etc/pacman.conf`.
 2. `scx-manager` stays installed (no updates, but keeps working).
