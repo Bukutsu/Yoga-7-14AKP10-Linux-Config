@@ -38,8 +38,8 @@ sudo glib-compile-schemas /usr/share/glib-2.0/schemas/
 CachyOS uses its own boot animation. You can easily switch back to the default Arch Linux vendor logo (bgrt) or spinner. This change is managed in `/etc/plymouth/plymouthd.conf` and is 100% permanent across updates.
 
 ```bash
-# 1. Switch to the default Arch 'bgrt' theme
-sudo plymouth-set-default-theme -R bgrt
+# 1. Switch to the default Arch 'bgrt' theme (Note: Do not use the -R flag on Arch)
+sudo plymouth-set-default-theme bgrt
 
 # 2. Rebuild the initramfs to embed the new theme
 sudo mkinitcpio -P
