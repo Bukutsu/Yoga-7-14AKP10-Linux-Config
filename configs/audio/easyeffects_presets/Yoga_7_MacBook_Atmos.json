@@ -143,16 +143,6 @@
       "release": 2.0,
       "threshold": -0.5
     },
-    "multiband_compressor#0": {
-      "band0": {
-        "attack-time": 20.0,
-        "boost-amount": 6.0,
-        "ratio": 4.0,
-        "release-time": 100.0,
-        "solo": false,
-        "threshold-threshold": -12.0
-      }
-    },
     "stereo_tools#0": {
       "balance-in": 0.0,
       "balance-out": 0.0,
@@ -172,7 +162,6 @@
       "crossfeed#0",
       "stereo_tools#0",
       "equalizer#0",
-      "multiband_compressor#0",
       "bass_enhancer#0",
       "exciter#0",
       "compressor#0",
