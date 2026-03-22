@@ -70,3 +70,23 @@ cp configs/audio/easyeffects_presets/ThinkPad_Z16_Dolby/*.json ~/.config/easyeff
 *   **Stereo Widening (`stereo_tools`)**: Widens the soundstage to match the cinematic feel of Dolby.
 *   **Targeted EQ (`equalizer`)**: Exact frequency boosts and cuts pulled from the official Windows driver XML files.
 *   **Maximized Loudness (`limiter`)**: Smooths out volume spikes and pushes the average loudness up safely without letting the speakers clip, crackle, or distort.
+
+---
+
+## 3. The "Harman Target" Curve (Audiophile Alternative)
+
+If you prefer a sound signature modeled after the industry-standard **Harman Target Curve** (which simulates flat studio monitors in a treated room), we have crafted a native preset: `Yoga_7_Harman_Target.json`.
+
+This preset does **not** use the Dolby Convolver. Instead, it relies on precise Parametric EQ and Bass Harmonics to:
+1. **Push vocals forward** (+4.5dB at 3000Hz).
+2. **Add punchy warmth** (+3.0dB at 105Hz).
+3. **Tame the screech** (-2.0dB at 5500Hz to remove harsh laptop tweeter resonance).
+
+### Installation:
+1. Copy the preset from the repo to your local EasyEffects output directory (depending on your EasyEffects version, this is either in `~/.config/` or `~/.local/share/`):
+```bash
+cp configs/audio/easyeffects_presets/Yoga_7_Harman_Target.json ~/.local/share/easyeffects/output/
+# OR
+cp configs/audio/easyeffects_presets/Yoga_7_Harman_Target.json ~/.config/easyeffects/output/
+```
+2. Open EasyEffects, go to **Presets**, select **Yoga_7_Harman_Target**, and click **Load**.
