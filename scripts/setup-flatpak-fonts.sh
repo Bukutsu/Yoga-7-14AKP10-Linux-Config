@@ -2,7 +2,8 @@
 # setup-flatpak-fonts.sh: Automate font prioritization for Flatpak apps.
 # Usage: ./scripts/setup-flatpak-fonts.sh                    (Interactive Mode)
 #        ./scripts/setup-flatpak-fonts.sh <lang-code> <font-family> (Quick Mode)
-#        ./scripts/setup-flatpak-fonts.sh uninstall <lang-code>    (Remove)
+#        ./scripts/setup-flatpak-fonts.sh uninstall                (Interactive Uninstall)
+#        ./scripts/setup-flatpak-fonts.sh uninstall <lang-code>    (Quick Uninstall)
 
 set -e
 
@@ -20,7 +21,8 @@ check_dependencies() {
 show_usage() {
     echo "Usage: $0                                 (Interactive Mode)"
     echo "       $0 <lang-code> <font-family>        (Quick Mode)"
-    echo "       $0 uninstall <lang-code>           (Remove)"
+    echo "       $0 uninstall                        (Interactive Uninstall)"
+    echo "       $0 uninstall <lang-code>           (Quick Uninstall)"
     echo ""
     echo "Example: $0 th \"Noto Sans Thai\""
     echo "         $0 uninstall th"
@@ -30,7 +32,7 @@ get_repo_root() {
     git rev-parse --show-toplevel 2>/dev/null || dirname "$(dirname "$(readlink -f "$0")")"
 }
 
-run_interactive() {
+run_interactive_install() {
     echo "--- Flatpak Font Setup Wizard ---"
     
     # 1. Select Language
@@ -79,6 +81,45 @@ run_interactive() {
     echo "  Language: $LANG_CODE"
     echo "  Font:     $FONT_FAMILY"
     read -p "Proceed with installation? (y/N): " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Aborted."
+        exit 0
+    fi
+}
+
+run_interactive_uninstall() {
+    local conf_dir="$HOME/.config/fontconfig/conf.d"
+    echo "--- Flatpak Font Uninstall Wizard ---"
+    
+    if [[ ! -d "$conf_dir" ]]; then
+        echo "No font configuration directory found at $conf_dir"
+        exit 0
+    fi
+
+    # Find files matching 99-*-fonts.conf
+    local files
+    files=$(find "$conf_dir" -maxdepth 1 -name "99-*-fonts.conf" -printf "%f\n" | sort)
+
+    if [[ -z "$files" ]]; then
+        echo "No custom font configurations found in $conf_dir"
+        exit 0
+    fi
+
+    echo "Select a configuration to remove:"
+    IFS=$'\n' read -r -d '' -a file_array <<< "$files" || true
+    select file in "${file_array[@]}" "Cancel"; do
+        if [[ "$file" == "Cancel" ]]; then
+            echo "Aborted."
+            exit 0
+        elif [[ -n "$file" ]]; then
+            # Extract language code from filename (99-LANG-fonts.conf)
+            LANG_CODE=$(echo "$file" | sed 's/^99-//;s/-fonts.conf$//')
+            break
+        fi
+    done
+
+    read -p "Are you sure you want to remove configuration for '$LANG_CODE'? (y/N): " -n 1 -r
     echo ""
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         echo "Aborted."
@@ -190,14 +231,15 @@ check_dependencies
 REPO_ROOT=$(get_repo_root)
 
 if [[ $# -eq 0 ]]; then
-    run_interactive
+    run_interactive_install
     install_logic "$LANG_CODE" "$FONT_FAMILY" "$REPO_ROOT"
 elif [[ "$1" == "uninstall" ]]; then
     if [[ -z "$2" ]]; then
-        show_usage
-        exit 1
+        run_interactive_uninstall
+        uninstall_logic "$LANG_CODE"
+    else
+        uninstall_logic "$2"
     fi
-    uninstall_logic "$2"
 else
     if [[ -z "$2" ]]; then
         show_usage
