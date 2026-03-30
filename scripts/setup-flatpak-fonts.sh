@@ -1,7 +1,8 @@
 #!/bin/bash
 # setup-flatpak-fonts.sh: Automate font prioritization for Flatpak apps.
-# Usage: ./scripts/setup-flatpak-fonts.sh <lang-code> <font-family>
-#        ./scripts/setup-flatpak-fonts.sh uninstall <lang-code>
+# Usage: ./scripts/setup-flatpak-fonts.sh                    (Interactive Mode)
+#        ./scripts/setup-flatpak-fonts.sh <lang-code> <font-family> (Quick Mode)
+#        ./scripts/setup-flatpak-fonts.sh uninstall <lang-code>    (Remove)
 
 set -e
 
@@ -17,131 +18,190 @@ check_dependencies() {
 }
 
 show_usage() {
-    echo "Usage: $0 <lang-code> <font-family>        (Install/Update)"
+    echo "Usage: $0                                 (Interactive Mode)"
+    echo "       $0 <lang-code> <font-family>        (Quick Mode)"
     echo "       $0 uninstall <lang-code>           (Remove)"
     echo ""
     echo "Example: $0 th \"Noto Sans Thai\""
     echo "         $0 uninstall th"
-    exit 1
 }
 
-# --- Initialization ---
+get_repo_root() {
+    git rev-parse --show-toplevel 2>/dev/null || dirname "$(dirname "$(readlink -f "$0")")"
+}
 
-check_dependencies
+run_interactive() {
+    echo "--- Flatpak Font Setup Wizard ---"
+    
+    # 1. Select Language
+    echo "Searching for available languages..."
+    # Use fc-list to get a list of common language codes
+    local langs
+    langs=$(fc-list : lang | cut -d= -f2 | cut -d: -f1 | tr ',' '\n' | sort -u | grep -E '^[a-z]{2}(-[a-z]{2})?$' | head -n 30)
+    
+    echo "Common language codes found on your system:"
+    select lang in $langs "Other"; do
+        if [[ "$lang" == "Other" ]]; then
+            read -p "Enter language code (e.g., ja, ko, zh-cn): " LANG_CODE
+            break
+        elif [[ -n "$lang" ]]; then
+            LANG_CODE=$lang
+            break
+        fi
+    done
 
-# Get repo root reliably
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || dirname "$(dirname "$(readlink -f "$0")")")
-
-MODE="install"
-if [[ "$1" == "uninstall" ]]; then
-    MODE="uninstall"
-    shift
-fi
-
-LANG_CODE=$1
-FONT_FAMILY=$2
-
-if [[ -z "$LANG_CODE" ]]; then
-    show_usage
-fi
-
-if [[ "$MODE" == "install" && -z "$FONT_FAMILY" ]]; then
-    show_usage
-fi
-
-CONF_DIR="$HOME/.config/fontconfig/conf.d"
-CONF_FILE="$CONF_DIR/99-$LANG_CODE-fonts.conf"
-
-# --- Logic ---
-
-if [[ "$MODE" == "uninstall" ]]; then
-    if [[ -f "$CONF_FILE" ]]; then
-        echo "Removing font configuration for $LANG_CODE at $CONF_FILE..."
-        rm -i "$CONF_FILE"
-        echo "Refreshing font cache..."
-        fc-cache -f
-        echo "Successfully uninstalled font config for $LANG_CODE."
-    else
-        echo "No configuration found for language: $LANG_CODE at $CONF_FILE"
+    # 2. Select Font
+    echo "Searching for fonts supporting '$LANG_CODE'..."
+    local fonts
+    # Get unique font family names for the selected language
+    fonts=$(fc-list ":lang=$LANG_CODE" family | cut -d, -f1 | sort -u | head -n 20)
+    
+    if [[ -z "$fonts" ]]; then
+        echo "No specific fonts found for language '$LANG_CODE'. Showing all fonts..."
+        fonts=$(fc-list : family | cut -d, -f1 | sort -u | head -n 20)
     fi
-    exit 0
-fi
 
-echo "--- Setting up $FONT_FAMILY for language: $LANG_CODE ---"
+    echo "Select a font family to prioritize:"
+    # Use a while loop with an array for better select handling of spaces
+    IFS=$'\n' read -r -d '' -a font_array <<< "$fonts" || true
+    select font in "${font_array[@]}" "Manual Entry"; do
+        if [[ "$font" == "Manual Entry" ]]; then
+            read -p "Enter font family name exactly: " FONT_FAMILY
+            break
+        elif [[ -n "$font" ]]; then
+            FONT_FAMILY=$font
+            break
+        fi
+    done
 
-# 1. Create directory
-mkdir -p "$CONF_DIR"
-
-# 2. Prevent accidental overwrites
-if [[ -f "$CONF_FILE" ]]; then
-    read -p "Warning: Config file already exists at $CONF_FILE. Overwrite? (y/N) " -n 1 -r
-    echo
+    echo ""
+    echo "Summary:"
+    echo "  Language: $LANG_CODE"
+    echo "  Font:     $FONT_FAMILY"
+    read -p "Proceed with installation? (y/N): " -n 1 -r
+    echo ""
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Aborting."
+        echo "Aborted."
         exit 0
     fi
-fi
+}
 
-# 3. Sync Configuration from Repository or Generate New
-REPO_CONF_FILE="$REPO_ROOT/.config/fontconfig/conf.d/99-$LANG_CODE-fonts.conf"
+install_logic() {
+    local lang=$1
+    local font=$2
+    local repo_root=$3
 
-if [[ -f "$REPO_CONF_FILE" ]]; then
-    echo "Found existing config in repository: $REPO_CONF_FILE"
-    echo "Copying to $CONF_FILE..."
-    cp "$REPO_CONF_FILE" "$CONF_FILE"
-else
-    echo "No config found in repository for $LANG_CODE. Generating a new one at $CONF_FILE..."
-    cat > "$CONF_FILE" <<EOF
+    local conf_dir="$HOME/.config/fontconfig/conf.d"
+    local conf_file="$conf_dir/99-$lang-fonts.conf"
+
+    echo "--- Setting up $font for language: $lang ---"
+
+    mkdir -p "$conf_dir"
+
+    if [[ -f "$conf_file" ]]; then
+        read -p "Warning: Config file already exists at $conf_file. Overwrite? (y/N) " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "Skipping file creation for $lang."
+            return
+        fi
+    fi
+
+    local repo_conf_file="$repo_root/.config/fontconfig/conf.d/99-$lang-fonts.conf"
+
+    if [[ -f "$repo_conf_file" ]]; then
+        echo "Found existing config in repository: $repo_conf_file"
+        echo "Copying to $conf_file..."
+        cp "$repo_conf_file" "$conf_file"
+    else
+        echo "Generating new configuration at $conf_file..."
+        cat > "$conf_file" <<EOF
 <?xml version="1.0"?>
 <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
 <fontconfig>
-  <!-- Preferred fonts for $LANG_CODE language -->
+  <!-- Preferred fonts for $lang language -->
   <match target="pattern">
     <test name="lang" compare="contains">
-      <string>$LANG_CODE</string>
+      <string>$lang</string>
     </test>
     <test name="family">
       <string>sans-serif</string>
     </test>
     <edit name="family" mode="prepend" binding="strong">
-      <string>$FONT_FAMILY</string>
+      <string>$font</string>
     </edit>
   </match>
 
   <match target="pattern">
     <test name="lang" compare="contains">
-      <string>$LANG_CODE</string>
+      <string>$lang</string>
     </test>
     <test name="family">
       <string>serif</string>
     </test>
     <edit name="family" mode="prepend" binding="strong">
-      <string>$FONT_FAMILY</string>
+      <string>$font</string>
     </edit>
   </match>
 
   <match target="pattern">
     <test name="lang" compare="contains">
-      <string>$LANG_CODE</string>
+      <string>$lang</string>
     </test>
     <test name="family">
       <string>monospace</string>
     </test>
     <edit name="family" mode="prepend" binding="strong">
-      <string>$FONT_FAMILY</string>
+      <string>$font</string>
     </edit>
   </match>
 </fontconfig>
 EOF
+    fi
+
+    echo "Applying global Flatpak overrides..."
+    flatpak override --user --filesystem=xdg-config/fontconfig:ro --filesystem=~/.local/share/fonts:ro
+
+    echo "Refreshing font cache..."
+    fc-cache -f
+
+    echo "--- Done! Restart your Flatpak applications to see the changes. ---"
+    echo "Verification: flatpak run --command=fc-match <AppID> :lang=$lang"
+}
+
+uninstall_logic() {
+    local lang=$1
+    local conf_file="$HOME/.config/fontconfig/conf.d/99-$lang-fonts.conf"
+
+    if [[ -f "$conf_file" ]]; then
+        echo "Removing font configuration for $lang at $conf_file..."
+        rm -i "$conf_file"
+        echo "Refreshing font cache..."
+        fc-cache -f
+        echo "Successfully uninstalled font config for $lang."
+    else
+        echo "No configuration found for language: $lang at $conf_file"
+    fi
+}
+
+# --- Main ---
+
+check_dependencies
+REPO_ROOT=$(get_repo_root)
+
+if [[ $# -eq 0 ]]; then
+    run_interactive
+    install_logic "$LANG_CODE" "$FONT_FAMILY" "$REPO_ROOT"
+elif [[ "$1" == "uninstall" ]]; then
+    if [[ -z "$2" ]]; then
+        show_usage
+        exit 1
+    fi
+    uninstall_logic "$2"
+else
+    if [[ -z "$2" ]]; then
+        show_usage
+        exit 1
+    fi
+    install_logic "$1" "$2" "$REPO_ROOT"
 fi
-
-# 4. Apply Flatpak Overrides
-echo "Applying global Flatpak overrides for fontconfig access..."
-flatpak override --user --filesystem=xdg-config/fontconfig:ro --filesystem=~/.local/share/fonts:ro
-
-# 5. Refresh Cache
-echo "Refreshing font cache..."
-fc-cache -f
-
-echo "--- Done! Restart your Flatpak applications to see the changes. ---"
-echo "Verification command: flatpak run --command=fc-match <AppID> :lang=$LANG_CODE"
