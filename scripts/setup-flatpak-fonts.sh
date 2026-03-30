@@ -21,9 +21,17 @@ echo "--- Setting up $FONT_FAMILY for language: $LANG_CODE ---"
 # 1. Create directory
 mkdir -p "$CONF_DIR"
 
-# 2. Generate Fontconfig
-echo "Generating font configuration at $CONF_FILE..."
-cat > "$CONF_FILE" <<EOF
+# 2. Sync Configuration from Repository
+REPO_CONF_DIR="$(dirname "$(dirname "$(readlink -f "$0")")")/.config/fontconfig/conf.d"
+REPO_CONF_FILE="$REPO_CONF_DIR/99-$LANG_CODE-fonts.conf"
+
+if [[ -f "$REPO_CONF_FILE" ]]; then
+    echo "Found existing config in repository: $REPO_CONF_FILE"
+    echo "Copying to $CONF_FILE..."
+    cp "$REPO_CONF_FILE" "$CONF_FILE"
+else
+    echo "No config found in repository for $LANG_CODE. Generating a new one at $CONF_FILE..."
+    cat > "$CONF_FILE" <<EOF
 <?xml version="1.0"?>
 <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
 <fontconfig>
@@ -65,6 +73,7 @@ cat > "$CONF_FILE" <<EOF
   </match>
 </fontconfig>
 EOF
+fi
 
 # 3. Apply Flatpak Overrides
 echo "Applying global Flatpak overrides for fontconfig access..."
