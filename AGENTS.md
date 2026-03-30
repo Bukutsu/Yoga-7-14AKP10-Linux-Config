@@ -16,15 +16,14 @@
 - Package management via `pacman` and AUR helpers (paru).
 
 ## Research Approach
-When researching solutions, especially for niche tasks (e.g., Android screen mirroring without developer options), follow this systematic process:
-1. **Define constraints** (user preferences, security, system limitations).
-2. **Search official channels** – Arch Wiki, official repos (`pacman -Ss`), AUR (`aurweb`), and upstream documentation.
-3. **Evaluate open‑source projects** – check GitHub/GitLab for active development, star count, recent commits, and license.
-4. **Test feasibility** – consider dependencies, integration with the existing desktop (GNOME), and whether the solution meets the core constraints.
-5. **Document findings** – create a plan file in `.opencode/plans/` with pros/cons, steps, and alternatives.
-6. **Update AGENTS.md** – record the successful approach for future reference.
+A systematic methodology for any research task:
 
-For Android screen mirroring, the key discovery was that **ScreenStream** (open‑source, F‑Droid) provides a simple HTTP‑based streaming solution that respects the “no developer options” constraint.
+1. **Define the problem & constraints** – clarify requirements, user preferences, and any hard limitations (e.g., security, no developer options).
+2. **Search official/standard channels** – Arch Wiki, official repositories (`pacman -Ss`), AUR, upstream documentation. These are the most trusted and well‑maintained sources.
+3. **Evaluate community/alternative solutions** – open‑source projects on GitHub/GitLab: assess activity (recent commits, stars, forks), license, and community feedback. Check if actively maintained.
+4. **Test feasibility** – examine dependencies, integration with existing system (e.g., desktop environment), and whether the solution meets core constraints. If possible, try a lightweight test or review user reports.
+5. **Document findings** – create a plan file in `.opencode/plans/` with a clear summary: recommended solution, alternatives, steps, and pros/cons.
+6. **Record successful approach** – update `AGENTS.md` (or knowledge base) with discovered solution and pitfalls to avoid.
 
 ## Notes
 - Always ask clarifying questions when requirements are ambiguous.
