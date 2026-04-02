@@ -1,5 +1,7 @@
 # AGENTS.md
 
+**Agent name**: Abigail
+
 ## Environment
 - **OS**: Arch Linux (CachyOS kernel)
 - **Desktop**: GNOME
