@@ -16,6 +16,7 @@
 - Android screen mirroring to Linux (without developer options) – see `.opencode/plans/android-screen-mirror.md`.
 - General system configuration and troubleshooting.
 - Package management via `pacman` and AUR helpers (paru).
+- Terminal integration (Ghostty ↔ Nautilus context menu) – requires `ghostty-nautilus` package.
 
 ## Research Approach
 A systematic methodology for any research task:

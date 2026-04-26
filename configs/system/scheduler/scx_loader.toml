@@ -1,5 +1,5 @@
 default_sched = "scx_lavd"
-default_mode = "Auto"
+default_mode = "Powersave"
 
 [scheds.scx_tickless]
 auto_mode = []
@@ -17,43 +17,28 @@ server_mode = ["-m", "all", "-s", "20000", "-S", "1000", "-I", "-1", "-D", "-L"]
 
 [scheds.scx_lavd]
 # LAVD: Optimized for Ryzen AI 7 350 (Shared 16MB L3 CCX)
-# ACPI highest_perf verified: cores 0,2,4,6=196 (max 5.09GHz) | cores 1,3,5,7=135 (max 3.51GHz)
-# All perf=196 cores are equal (no sub-tiers). SMT siblings share same perf rating.
-# --autopower: Syncs with power-profiles-daemon (performance/balanced/power-saver)
-# --cpu-pref-order: Route tasks to perf=196 cores first, then perf=135
-# --lb-low-util-pct: Skip periodic load balancing under light load
-# Minimal flags for maximum stability across scx_lavd updates
+# ACPI highest_perf: 4,6(208) | 0,8(202) | 2,10(196) | E-cores(135)
 auto_mode = [
     "--autopower",
-    "--cpu-pref-order", "4,12,6,14,0,8,2,10,1,3,5,7,9,11,13,15",
-    "--lb-low-util-pct", "10"
+    "--cpu-pref-order", "4,6,0,2,1,3,5,7,12,14,8,10,9,11,13,15",
+    "--lb-low-util-pct", "15"
 ]
-# Maximum Performance: All cores active, perf=196 cores prioritized
-# Use Cases: Video encoding, compilation, "I need speed NOW"
-# PPD Mapping: Activates when power-profiles-daemon is set to "performance"
 gaming_mode = [
     "--performance",
-    "--cpu-pref-order", "4,12,6,14,0,8,2,10,1,3,5,7,9,11,13,15",
+    "--cpu-pref-order", "4,6,0,2,12,14,8,10,1,3,5,7,9,11,13,15",
     "--lb-low-util-pct", "0"
 ]
-# Balanced: Core compaction enabled, mix of power and performance
-# Use Cases: Everyday desktop usage
-# PPD Mapping: Activates when power-profiles-daemon is set to "balanced"
 balanced_mode = [
     "--balanced",
-    "--cpu-pref-order", "4,12,6,14,0,8,2,10,1,3,5,7,9,11,13,15",
+    "--cpu-pref-order", "4,6,0,2,1,3,5,7,12,14,8,10,9,11,13,15",
     "--lb-low-util-pct", "25"
 ]
-# Maximum Battery: Core compaction, perf=135 cores prioritized
-# Use Cases: Web browsing, document editing, light coding
-# Tradeoff: UI may feel slightly less responsive for better battery life
-# PPD Mapping: Activates when power-profiles-daemon is set to "power-saver"
 powersave_mode = [
     "--powersave",
-    "--cpu-pref-order", "4,12,6,14,0,8,2,10,1,3,5,7,9,11,13,15",
-    "--lb-low-util-pct", "70"
+    "--cpu-pref-order", "1,3,5,7,9,11,13,15,4,6,0,2,12,14,8,10",
+    "--lb-low-util-pct", "85"
 ]
-lowlatency_mode = []  # Use balanced or gaming instead
+lowlatency_mode = []
 server_mode = []
 
 [scheds.scx_cosmos]
@@ -64,37 +49,36 @@ powersave_mode = ["-m", "powersave", "-d", "-p", "5000"]
 server_mode = ["-s", "20000"]
 
 [scheds.scx_rustland]
+# Optimized for your installed version (1.1.x)
 auto_mode = []
-gaming_mode = []
-lowlatency_mode = []
-powersave_mode = []
+gaming_mode = ["-s", "10000"]
+lowlatency_mode = ["-s", "5000"]
+powersave_mode = ["-s", "50000"]
 server_mode = []
 
-# FALLBACK: scx_bpfland for audio production (lower jitter, fully BPF)
-# Use scx-manager to temporarily switch if needed for real-time audio work
 [scheds.scx_bpfland]
 auto_mode = ["-m", "all", "-f", "--preferred-idle-scan"]
 lowlatency_mode = ["-m", "performance", "-f", "-s", "500", "--idle-resume-us", "100"]
-powersave_mode = ["-m", "powersave", "-f", "-t", "150", "--preferred-idle-scan"]
+powersave_mode = ["-m", "powersave", "-f", "--preferred-idle-scan"]
 server_mode = ["-s", "20000", "-S"]
 
-[scheds.scx_beerland]
-auto_mode = []
-gaming_mode = []
-lowlatency_mode = []
-powersave_mode = []
-server_mode = []
-
 [scheds.scx_p2dq]
-auto_mode = []
-gaming_mode = ["--task-slice", "true", "-f", "--sched-mode", "performance"]
-lowlatency_mode = ["-y", "-f", "--task-slice", "true"]
-powersave_mode = ["--sched-mode", "efficiency"]
+# The "Set and Forget" Master Profile for Zen 5
+# Pick-2 with PELT-based EAS (Energy-Aware Scheduling)
+auto_mode = ["--enable-eas=true", "--enable-pelt=true", "--hw-auto-optimize=true"]
+gaming_mode = [
+    "--sched-mode", "performance", 
+    "--task-slice=true", 
+    "--cpu-priority=true",
+    "--hw-auto-optimize=true"
+]
+lowlatency_mode = ["-y", "-f", "--task-slice=true"]
+powersave_mode = ["--sched-mode", "efficiency", "--enable-eas=true", "--enable-pelt=true"]
 server_mode = ["--keep-running"]
 
 [scheds.scx_rusty]
 auto_mode = []
-gaming_mode = []
+gaming_mode = ["--perf", "1024", "--fifo-sched"]
 lowlatency_mode = []
-powersave_mode = []
+powersave_mode = ["--perf", "0"]
 server_mode = []
