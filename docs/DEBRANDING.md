@@ -1,49 +1,59 @@
-# De-branding CachyOS Visuals
+# De-branding CachyOS
 
-If you are transitioning your system back to an Arch Linux identity, you might want to remove CachyOS-specific visual elements from your boot sequence and login screen.
-
-## 1. Remove CachyOS Logo from GDM (Login Screen)
-
-CachyOS overrides the default GDM logo. There are two ways to remove it:
-
-### Option A: Remove the override (Keep CachyOS Settings)
-This removes the logo but keeps other `cachyos-settings` (like sysctl tweaks) intact. We do both a file deletion and a dconf override to ensure it's future-proof.
+## 1. Arch Identity (Forever Persistent)
+Masks branding hooks to keep package updates while staying "Arch Linux" forever.
 
 ```bash
-# 1. Delete the schema override file
-sudo rm -f /usr/share/glib-2.0/schemas/zz_cachyos.org.gnome.login-screen.gschema.override
+# 1. Mask branding hooks (Prevents overwrites)
+sudo mkdir -p /etc/libalpm/hooks/
+for hook in os-release.hook lsb-release.hook; do
+  sudo ln -sf /dev/null "/etc/libalpm/hooks/$hook"
+done
 
-# 2. Recompile schemas
-sudo glib-compile-schemas /usr/share/glib-2.0/schemas/
+# 2. Restore identity files
+sudo pacman -S filesystem lsb-release
+sudo ln -sf /usr/lib/os-release /etc/os-release
+sudo ln -sf /usr/lib/lsb-release /etc/lsb-release
 
-# 3. Set the dconf key (Permanent user-level override)
-sudo -u gdm dbus-launch gsettings set org.gnome.login-screen logo ''
-
-# 4. Restart GDM to apply changes (Note: This will log you out!)
-sudo systemctl restart gdm
+# 3. Update boot menu
+sudo limine-mkinitcpio && sudo limine-update
 ```
 
-### Option B: Full Removal (Zero-Maintenance)
-If you no longer want any CachyOS settings, simply remove the package entirely. This guarantees the logo will never return on updates.
+## 2. GDM Logo (Login Screen)
+Choose based on your preference for CachyOS performance tweaks.
 
+**Option A: Purge (100% Pure Arch)**
 ```bash
 sudo pacman -Rs cachyos-settings
 sudo glib-compile-schemas /usr/share/glib-2.0/schemas/
 ```
 
----
+**Option B: Mask (Keep performance tweaks, remove logo)**
+```bash
+# Create schema override that wins over CachyOS (zzzz > zz_c)
+printf '[org.gnome.login-screen]\nlogo='\'''\''\n' | sudo tee /usr/share/glib-2.0/schemas/zzzz_arch-fix.gschema.override
+sudo glib-compile-schemas /usr/share/glib-2.0/schemas/
+```
 
-## 2. Restore Arch Linux Boot Splash (Plymouth)
-
-CachyOS uses its own boot animation. You can easily switch back to the default Arch Linux vendor logo (bgrt) or spinner. This change is managed in `/etc/plymouth/plymouthd.conf` and is 100% permanent across updates.
+## 3. Limine Visuals
+Clean up the bootloader theme and remove stale CachyOS entries.
 
 ```bash
-# 1. Switch to the default Arch 'bgrt' theme (Note: Do not use the -R flag on Arch)
+# Remove CachyOS theme block
+sudo sed -i '/# CachyOS Limine theme/,/wallpaper:/d' /boot/limine.conf
+sudo sed -i '/interface_branding:/d' /boot/limine.conf
+sudo sed -i '/term_palette/d; /term_background/d; /term_foreground/d' /boot/limine.conf
+```
+
+Then open `/boot/limine.conf` and manually remove the `/+CachyOS` entry block and set `default_entry` to the Arch Linux entry number.
+
+```bash
+sudo limine-update
+```
+
+## 4. Plymouth (Boot Splash)
+```bash
 sudo plymouth-set-default-theme bgrt
-
-# 2. Rebuild the initramfs to embed the new theme
 sudo mkinitcpio -P
-
-# 3. (If using Limine) Update the bootloader
 sudo limine-update
 ```
