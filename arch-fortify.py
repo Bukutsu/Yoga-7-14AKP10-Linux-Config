@@ -15,6 +15,7 @@ BACKUP_DIR = Path(f"/var/lib/arch-fortify/backups/{datetime.now():%Y%m%d_%H%M%S}
 BACKUP_ROOT = Path("/var/lib/arch-fortify/backups")
 
 DRY_RUN = False
+VERBOSE = False
 
 # ── Utilities ─────────────────────────────────────────────────────────
 
@@ -51,9 +52,16 @@ def run(args, check=True, optional=False, input_data=None):
         info(f"Would run: {' '.join(args)}")
         return None
     try:
-        return subprocess.run(args, check=check, capture_output=True, text=True, input=input_data)
+        if VERBOSE:
+            info(f"Running: {' '.join(args)}")
+            return subprocess.run(args, check=check)
+        result = subprocess.run(args, check=check, capture_output=True, text=True, input=input_data)
+        if result.stdout.strip():
+            print(f"  {result.stdout.strip()}")
+        return result
     except subprocess.CalledProcessError as e:
-        print(f"  stderr: {e.stderr.strip()}")
+        if not VERBOSE:
+            print(f"  stderr: {e.stderr.strip()}")
         if check:
             sys.exit(1)
         return e
@@ -393,8 +401,7 @@ def verify():
 # ── Main ─────────────────────────────────────────────────────────────
 
 def main():
-    global DRY_RUN
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    global DRY_RUN, VERBOSE
 
     if "--restore" in sys.argv:
         ts = None
@@ -407,6 +414,9 @@ def main():
     if "--dry" in sys.argv or "--dry-run" in sys.argv or "-n" in sys.argv:
         DRY_RUN = True
         print("═══ DRY RUN — no changes will be written ═══\n")
+
+    if "-v" in sys.argv or "--verbose" in sys.argv:
+        VERBOSE = True
 
     if os.geteuid() != 0:
         fail("Must run as root (sudo).")
