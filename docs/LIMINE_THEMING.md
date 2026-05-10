@@ -22,8 +22,8 @@ Paste this at the top of your `limine.conf`:
 
 ```conf
 # Tokyo Night Dark theme
-term_palette: 1a1b26;f7768e;9ece6a;e0af68;7aa2f7;bb9af7;7dcfff;c0caf5
-term_palette_bright: 414868;f7768e;9ece6a;e0af68;7aa2f7;bb9af7;7dcfff;c0caf5
+term_palette: 15161e;f7768e;9ece6a;e0af68;7aa2f7;bb9af7;7dcfff;a9b1d6
+term_palette_bright: 414868;ff899d;9fe044;faba4a;8db0ff;c7a9ff;a4daff;c0caf5
 term_background: 1a1b26
 term_foreground: c0caf5
 term_background_bright: 414868

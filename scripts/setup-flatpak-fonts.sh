@@ -1,10 +1,18 @@
 #!/bin/bash
-# setup-flatpak-fonts.sh: Automate font prioritization for Flatpak apps.
-# Usage: ./scripts/setup-flatpak-fonts.sh                    (Interactive Mode)
-#        ./scripts/setup-flatpak-fonts.sh <lang-code> <font-family> (Quick Mode)
-#        ./scripts/setup-flatpak-fonts.sh <lang-code> <font-family> all    (Apply to all apps)
-#        ./scripts/setup-flatpak-fonts.sh uninstall                (Interactive Uninstall)
-#        ./scripts/setup-flatpak-fonts.sh uninstall <lang-code>    (Quick Uninstall)
+# setup-flatpak-fonts.sh: Make Flatpak apps inherit the host's fontconfig
+# (so distro-curated language defaults — e.g. Thai -> Noto Sans Thai —
+# render the same inside the sandbox as on the host).
+#
+# Primary mode:
+#   ./scripts/setup-flatpak-fonts.sh                 # interactive menu
+#   ./scripts/setup-flatpak-fonts.sh sync            # install host-fontconfig sync
+#   ./scripts/setup-flatpak-fonts.sh unsync          # revert sync + revoke grants
+#   ./scripts/setup-flatpak-fonts.sh state           # show current state (dry-run)
+#   ./scripts/setup-flatpak-fonts.sh list            # list sync status + legacy configs
+#
+# Legacy mode (force a specific font for one language):
+#   ./scripts/setup-flatpak-fonts.sh <lang> <font> [all]
+#   ./scripts/setup-flatpak-fonts.sh uninstall [<lang>]
 
 set -e
 
@@ -20,17 +28,23 @@ check_dependencies() {
 }
 
 show_usage() {
-    echo "Usage: $0                                 (Interactive Mode)"
-    echo "       $0 <lang-code> <font-family>        (Quick Mode)"
-    echo "       $0 <lang-code> <font-family> all    (Apply to all apps)"
-    echo "       $0 list                             (List configured fonts)"
-    echo "       $0 uninstall                        (Interactive Uninstall)"
-    echo "       $0 uninstall <lang-code>           (Quick Uninstall)"
-    echo ""
-    echo "Example: $0 th \"Noto Sans Thai\""
-    echo "         $0 th \"Noto Sans Thai\" all"
-    echo "         $0 uninstall th"
-    echo "         $0 list"
+    cat <<EOF
+Usage:
+  $0                              Interactive menu
+  $0 sync                         Install host-fontconfig sync (recommended)
+  $0 unsync                       Revert sync and revoke filesystem grants
+  $0 state                        Print current state (overrides, fc-match diff)
+  $0 list                         List sync status and legacy configs
+  $0 uninstall [<lang>]           Remove a legacy per-language config
+  $0 <lang> <font> [all]          Legacy: force a specific font for <lang>
+  $0 -h | --help                  This help
+
+Examples:
+  $0 sync
+  $0 state
+  $0 th "Noto Sans Thai" all      # legacy mode, only if sync isn't enough
+  $0 unsync
+EOF
 }
 
 get_repo_root() {
@@ -38,10 +52,9 @@ get_repo_root() {
 }
 
 run_interactive_install() {
-    echo "--- Flatpak Font Setup Wizard ---"
+    echo "=== Flatpak Font Setup Wizard ==="
     echo ""
-    
-    # 1. Select Language - use common language list for better UX
+
     declare -A common_langs=(
         ["ar"]="Arabic"
         ["bn"]="Bengali"
@@ -70,165 +83,197 @@ run_interactive_install() {
         ["uk"]="Ukrainian"
         ["vi"]="Vietnamese"
     )
-    
-    echo "Select a language:"
-    local lang_codes=("${!common_langs[@]}" "Other")
-    PS3="Enter your choice (1-${#lang_codes[@]}): "
-    select lang in "${lang_codes[@]}"; do
-        if [[ "$lang" == "Other" ]]; then
-            read -p "Enter language code (e.g., ja, ko, zh-cn): " LANG_CODE
-            if [[ ! $LANG_CODE =~ ^[a-z]{2}(-[a-z]{2})?$ ]]; then
-                echo "Invalid format. Please use format like 'ja' or 'zh-cn'"
-                continue
+
+    # --- Step 1: Language ---
+    echo "Step 1/3 — Select a language:"
+    echo ""
+
+    # Build sorted display and key arrays (sort by language name)
+    local lang_display=() lang_keys=()
+    while IFS=$'\t' read -r _name _code; do
+        lang_display+=("$_name ($_code)")
+        lang_keys+=("$_code")
+    done < <(for _code in "${!common_langs[@]}"; do
+        printf '%s\t%s\n' "${common_langs[$_code]}" "$_code"
+    done | sort)
+    lang_display+=("Other (enter manually)")
+
+    PS3=$'\nChoice: '
+    select _choice in "${lang_display[@]}"; do
+        if [[ "$_choice" == "Other (enter manually)" ]]; then
+            while true; do
+                read -rp "  Language code (e.g. ja, ko, zh-cn): " LANG_CODE
+                LANG_CODE="${LANG_CODE// /}"
+                if [[ $LANG_CODE =~ ^[a-z]{2,3}(-[a-zA-Z]{2,4})?$ ]]; then
+                    break
+                fi
+                echo "  Invalid format. Use 2-3 lowercase letters, optionally '-XX' (e.g. zh-cn)."
+            done
+            break
+        elif [[ -n "$_choice" && "$REPLY" =~ ^[0-9]+$ ]]; then
+            local _idx=$(( REPLY - 1 ))
+            if [[ $_idx -ge 0 && $_idx -lt ${#lang_keys[@]} ]]; then
+                LANG_CODE="${lang_keys[$_idx]}"
+                break
             fi
-            break
-        elif [[ -n "$lang" && -n "${common_langs[$lang]}" ]]; then
-            LANG_CODE=$lang
-            break
-        else
-            echo "Invalid selection. Please choose a number from the list."
         fi
+        echo "  Please enter a number from 1 to ${#lang_display[@]}."
     done
     unset PS3
-    
     echo ""
-    echo "Searching for fonts supporting '$LANG_CODE'..."
-    local fonts
-    fonts=$(fc-list ":lang=$LANG_CODE" family 2>/dev/null | tr ',' '\n' | sort -u)
-    
-    if [[ -z "$fonts" ]]; then
-        echo "No fonts found for language '$LANG_CODE'. Please install a font that supports this language."
+
+    # --- Step 2: Font ---
+    echo "Step 2/3 — Select a font for '$LANG_CODE'..."
+    local raw_fonts
+    raw_fonts=$(fc-list ":lang=$LANG_CODE" family 2>/dev/null \
+        | tr ',' '\n' \
+        | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+        | sort -u)
+
+    if [[ -z "$raw_fonts" ]]; then
+        echo ""
+        echo "Error: No installed fonts support language '$LANG_CODE'."
+        echo "Install an appropriate font and re-run the wizard."
         exit 1
     fi
-    
-    local font_count
-    font_count=$(echo "$fonts" | wc -l)
-    echo "Found $font_count font(s) supporting '$LANG_CODE'"
-    echo ""
-    
-    # 2. Select Font
-    echo "Select a font family:"
+
     local font_array=()
-    while IFS= read -r line; do
-        [[ -n "$line" ]] && font_array+=("$line")
-    done <<< "$fonts"
-    
-    # Add manual entry option
-    font_array+=("Enter manually...")
-    
-    if [[ ${#font_array[@]} -eq 1 ]]; then
-        echo "Only one font available: ${font_array[0]}"
-        FONT_FAMILY="${font_array[0]}"
+    while IFS= read -r _line; do
+        [[ -n "$_line" ]] && font_array+=("$_line")
+    done <<< "$raw_fonts"
+
+    local font_count=${#font_array[@]}
+    echo "Found $font_count font(s)."
+    echo ""
+
+    # Offer a filter when the list is long
+    local display_fonts=("${font_array[@]}")
+    if [[ $font_count -gt 15 ]]; then
+        read -rp "  Filter by name (Enter to list all $font_count): " _filter
+        if [[ -n "$_filter" ]]; then
+            local _matched=()
+            for _f in "${font_array[@]}"; do
+                [[ "${_f,,}" == *"${_filter,,}"* ]] && _matched+=("$_f")
+            done
+            if [[ ${#_matched[@]} -eq 0 ]]; then
+                echo "  No match for '$_filter' — showing all fonts."
+            else
+                echo "  ${#_matched[@]} font(s) match."
+                display_fonts=("${_matched[@]}")
+            fi
+        fi
+        echo ""
+    fi
+
+    if [[ ${#display_fonts[@]} -eq 1 ]]; then
+        FONT_FAMILY="${display_fonts[0]}"
+        echo "Auto-selected the only available font: $FONT_FAMILY"
     else
-        PS3="Enter your choice (1-${#font_array[@]}): "
-        select font in "${font_array[@]}"; do
-            if [[ "$font" == "Enter manually..." ]]; then
-                read -p "Enter font family name exactly (check fc-list for exact name): " FONT_FAMILY
-                FONT_FAMILY=$(echo "$FONT_FAMILY" | xargs)
-                if [[ -z "$FONT_FAMILY" ]]; then
-                    echo "Font name cannot be empty."
-                    continue
-                fi
+        display_fonts+=("Enter name manually...")
+        PS3=$'\nChoice: '
+        select _choice in "${display_fonts[@]}"; do
+            if [[ "$_choice" == "Enter name manually..." ]]; then
+                while true; do
+                    read -rp "  Font family name (as shown by fc-list): " FONT_FAMILY
+                    FONT_FAMILY="$(printf '%s' "$FONT_FAMILY" | xargs)"
+                    [[ -n "$FONT_FAMILY" ]] && break
+                    echo "  Font name cannot be empty."
+                done
                 break
-            elif [[ -n "$font" ]]; then
-                FONT_FAMILY=$font
+            elif [[ -n "$_choice" ]]; then
+                FONT_FAMILY="$_choice"
                 break
             else
-                echo "Invalid selection. Please choose a number from the list."
+                echo "  Please enter a number from 1 to ${#display_fonts[@]}."
             fi
         done
         unset PS3
     fi
-    
-    # Validate font exists
-    if ! fc-list ":family=$FONT_FAMILY" family 2>/dev/null | grep -qi "$FONT_FAMILY"; then
-        read -p "Warning: Font '$FONT_FAMILY' not found in system. Proceed anyway? (y/N): " -n 1 -r
+    echo ""
+
+    # Validate font exists in system index
+    if ! fc-list -- : family 2>/dev/null | tr ',' '\n' | sed 's/^[[:space:]]*//' | grep -qiF "$FONT_FAMILY"; then
+        echo "  Warning: '$FONT_FAMILY' was not found in the system font index."
+        read -rp "  Proceed anyway? [y/N]: " _ans
         echo ""
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            echo "Aborted."
-            exit 0
-        fi
+        [[ ! "$_ans" =~ ^[Yy]$ ]] && { echo "Aborted."; exit 0; }
     fi
-    
-    # Ask about per-app configuration
+
+    # --- Step 3: Scope ---
+    echo "Step 3/3 — Choose where to apply the font override:"
+    echo "  [1] Global only       — affects apps via ~/.config/fontconfig"
+    echo "  [2] All Flatpak apps  — global + per-app overrides (most reliable)"
     echo ""
-    read -p "Apply to ALL installed Flatpak apps? (recommended for reliability) (y/N): " -n 1 -r
+    read -rp "  Choice [1/2, default 1]: " _scope
     echo ""
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        APPLY_ALL="all"
-    fi
-    
-    echo ""
+    [[ "$_scope" == "2" ]] && APPLY_ALL="all"
+
+    # Confirmation
+    local _lang_name="${common_langs[$LANG_CODE]:-$LANG_CODE}"
     echo "========================================"
-    echo "Summary:"
-    echo "  Language: $LANG_CODE (${common_langs[$LANG_CODE]:-custom})"
-    echo "  Font:     $FONT_FAMILY"
-    echo "  Apply to all apps: ${APPLY_ALL:-no}"
+    echo "  Language : $LANG_CODE  ($_lang_name)"
+    echo "  Font     : $FONT_FAMILY"
+    echo "  Scope    : ${APPLY_ALL:+all Flatpak apps (global + per-app)}${APPLY_ALL:-global fontconfig only}"
     echo "========================================"
-    read -p "Proceed with installation? (y/N): " -n 1 -r
+    read -rp "Proceed? [y/N]: " _ans
     echo ""
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Aborted."
-        exit 0
-    fi
+    [[ ! "$_ans" =~ ^[Yy]$ ]] && { echo "Aborted."; exit 0; }
 }
 
 run_interactive_uninstall() {
     local conf_dir="$HOME/.config/fontconfig/conf.d"
-    echo "--- Flatpak Font Uninstall Wizard ---"
+    echo "=== Flatpak Font Uninstall Wizard ==="
     echo ""
-    
+
     if [[ ! -d "$conf_dir" ]]; then
         echo "No font configuration directory found at $conf_dir"
         exit 0
     fi
-    
+
     local files
     files=$(find "$conf_dir" -maxdepth 1 -name "99-*-fonts.conf" -printf "%f\n" | sort)
-    
+
     if [[ -z "$files" ]]; then
         echo "No custom font configurations found."
-        echo "Run without arguments to set up a new font configuration."
+        echo "Run without arguments to configure a new font."
         exit 0
     fi
-    
+
     echo "Configured language fonts:"
     echo ""
-    local file_array=()
-    local lang_array=()
-    while IFS= read -r file; do
-        [[ -n "$file" ]] || continue
-        file_array+=("$file")
-        lang=$(echo "$file" | sed 's/^99-//;s/-fonts.conf$//')
-        lang_array+=("$lang")
-        
-        local font_name
-        font_name=$(grep -oP '(?<=<string>)[^<]+(?=</string>)' "$conf_dir/$file" | head -1)
-        printf "  [%d] %-10s -> %s\n" "${#file_array[@]}" "$lang" "$font_name"
+    local file_array=() lang_array=()
+    while IFS= read -r _file; do
+        [[ -n "$_file" ]] || continue
+        file_array+=("$_file")
+        local _lang _font
+        _lang=$(printf '%s' "$_file" | sed 's/^99-//;s/-fonts.conf$//')
+        lang_array+=("$_lang")
+        _font=$(grep -oP '(?<=<string>)[^<]+(?=</string>)' "$conf_dir/$_file" 2>/dev/null | head -1)
+        printf "  [%2d]  %-14s  %s\n" "${#file_array[@]}" "$_lang" "${_font:-(unknown)}"
     done <<< "$files"
-    
+
     echo ""
-    read -p "Select a configuration to remove (or press Enter to cancel): " -n 1 -r
+    local _total=${#file_array[@]}
+    local _sel
+    while true; do
+        read -rp "Number to remove (1-$_total, or Enter to cancel): " _sel
+        if [[ -z "$_sel" ]]; then
+            echo "Aborted."
+            exit 0
+        fi
+        if [[ "$_sel" =~ ^[0-9]+$ && "$_sel" -ge 1 && "$_sel" -le $_total ]]; then
+            break
+        fi
+        echo "  Invalid selection. Enter a number from 1 to $_total."
+    done
+
+    local _idx=$(( _sel - 1 ))
+    LANG_CODE="${lang_array[$_idx]}"
+
     echo ""
-    
-    if [[ -z "$REPLY" ]]; then
-        echo "Aborted."
-        exit 0
-    fi
-    
-    if [[ ! "$REPLY" =~ ^[0-9]+$ ]] || [[ "$REPLY" -lt 1 ]] || [[ "$REPLY" -gt ${#file_array[@]} ]]; then
-        echo "Invalid selection."
-        exit 1
-    fi
-    
-    local idx=$((REPLY - 1))
-    local file="${file_array[$idx]}"
-    local lang="${lang_array[$idx]}"
-    
+    read -rp "Remove font config for '$LANG_CODE'? [y/N]: " _ans
     echo ""
-    read -p "Remove configuration for '$lang'? (y/N): " -n 1 -r
-    echo ""
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    if [[ ! "$_ans" =~ ^[Yy]$ ]]; then
         echo "Aborted."
         exit 0
     fi
@@ -302,7 +347,7 @@ install_logic() {
         fi
     fi
 
-    local repo_conf_file="$repo_root/.config/fontconfig/conf.d/99-$lang-fonts.conf"
+    local repo_conf_file="$repo_root/configs/fontconfig/conf.d/99-$lang-fonts.conf"
 
     if [[ -f "$repo_conf_file" ]]; then
         echo "Found existing config in repository: $repo_conf_file"
@@ -386,39 +431,306 @@ uninstall_logic() {
     echo "Refreshing font cache..."
     fc-cache -f
     echo "Successfully uninstalled font config for $lang."
+
+    # If no legacy configs remain AND sync isn't installed, offer to revoke grants
+    local conf_dir="$HOME/.config/fontconfig/conf.d"
+    local sync_file="$conf_dir/99-flatpak-host-sync.conf"
+    local remaining=""
+    if [[ -d "$conf_dir" ]]; then
+        remaining=$(find "$conf_dir" -maxdepth 1 -name "99-*-fonts.conf" -printf "%f\n" 2>/dev/null)
+    fi
+    if [[ -z "$remaining" && ! -f "$sync_file" ]]; then
+        echo ""
+        read -rp "No font configs remain. Revoke global Flatpak filesystem grants too? [y/N]: " _ans
+        if [[ "$_ans" =~ ^[Yy]$ ]]; then
+            unsync_logic --grants-only
+        fi
+    fi
 }
 
 list_configs() {
     local conf_dir="$HOME/.config/fontconfig/conf.d"
-    
-    echo "--- Configured Font Overrides ---"
+    local sync_file="$conf_dir/99-flatpak-host-sync.conf"
+
+    echo "=== Flatpak Font Configuration ==="
     echo ""
-    
-    if [[ ! -d "$conf_dir" ]]; then
-        echo "No font configurations found."
-        exit 0
+
+    if [[ -f "$sync_file" ]]; then
+        echo "Sync status: INSTALLED  ($sync_file)"
+    else
+        echo "Sync status: not installed"
     fi
-    
+    echo ""
+
+    echo "Active Flatpak filesystem grants (--user):"
+    local grants
+    grants=$(flatpak override --user --show 2>/dev/null | grep -E '^filesystems=' || true)
+    if [[ -n "$grants" ]]; then
+        echo "  ${grants#filesystems=}" | tr ';' '\n' | sed 's/^/    /'
+    else
+        echo "  (none)"
+    fi
+    echo ""
+
+    echo "Legacy per-language configs:"
+    if [[ ! -d "$conf_dir" ]]; then
+        echo "  (none — $conf_dir does not exist)"
+        return 0
+    fi
     local files
     files=$(find "$conf_dir" -maxdepth 1 -name "99-*-fonts.conf" -printf "%f\n" | sort)
-    
     if [[ -z "$files" ]]; then
-        echo "No custom font configurations found."
-        exit 0
+        echo "  (none)"
+        return 0
     fi
-    
-    printf "%-12s %s\n" "LANGUAGE" "FONT"
-    echo "-----------------------------------"
-    
+    printf "  %-12s %s\n" "LANGUAGE" "FONT"
+    printf "  %-12s %s\n" "--------" "----"
     while IFS= read -r file; do
         [[ -n "$file" ]] || continue
-        lang=$(echo "$file" | sed 's/^99-//;s/-fonts.conf$//')
-        font_name=$(grep -oP '(?<=<string>)[^<]+(?=</string>)' "$conf_dir/$file" | head -1)
-        printf "%-12s %s\n" "$lang" "$font_name"
+        local lang font_name
+        lang=$(printf '%s' "$file" | sed 's/^99-//;s/-fonts.conf$//')
+        font_name=$(grep -oP '(?<=<string>)[^<]+(?=</string>)' "$conf_dir/$file" 2>/dev/null | head -1)
+        printf "  %-12s %s\n" "$lang" "${font_name:-(unknown)}"
     done <<< "$files"
-    
     echo ""
-    echo "To uninstall: $0 uninstall <lang-code>"
+    echo "To uninstall a legacy config: $0 uninstall <lang>"
+}
+
+# --- Host-fontconfig sync ---
+
+SYNC_FILE_NAME="99-flatpak-host-sync.conf"
+SYNC_GRANTS=(host-os host-etc xdg-config/fontconfig ~/.local/share/fonts)
+
+wipe_app_caches() {
+    [[ -d "$HOME/.var/app" ]] || return 0
+    find "$HOME/.var/app" -maxdepth 4 -type d -name fontconfig -path '*/cache/*' \
+        -exec rm -rf {} + 2>/dev/null || true
+}
+
+detect_app_for_probe() {
+    # User overrides apply to apps, not runtimes — probe via an installed app.
+    flatpak list --app --columns=application 2>/dev/null \
+        | grep -v '^Application$' \
+        | head -1
+}
+
+sync_is_installed() {
+    [[ -f "$HOME/.config/fontconfig/conf.d/$SYNC_FILE_NAME" ]]
+}
+
+write_sync_conf() {
+    local target="$HOME/.config/fontconfig/conf.d/$SYNC_FILE_NAME"
+    local repo_template="$REPO_ROOT/configs/fontconfig/conf.d/$SYNC_FILE_NAME"
+    mkdir -p "$(dirname "$target")"
+
+    if [[ -f "$repo_template" ]]; then
+        if [[ -f "$target" ]] && cmp -s "$repo_template" "$target"; then
+            echo "  Sync conf already up to date: $target"
+        else
+            cp "$repo_template" "$target"
+            echo "  Wrote sync conf from repo template: $target"
+        fi
+    else
+        cat > "$target" <<'EOFSYNC'
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<fontconfig>
+  <dir>/run/host/usr/share/fonts</dir>
+  <dir prefix="xdg">fonts</dir>
+  <include ignore_missing="yes" prefix="default">/run/host/etc/fonts/conf.d</include>
+</fontconfig>
+EOFSYNC
+        echo "  Wrote sync conf: $target"
+    fi
+}
+
+apply_sync_grants() {
+    local args=()
+    for g in "${SYNC_GRANTS[@]}"; do
+        args+=(--filesystem="${g}:ro")
+    done
+    flatpak override --user "${args[@]}"
+}
+
+revoke_sync_grants() {
+    local args=()
+    for g in "${SYNC_GRANTS[@]}"; do
+        args+=(--nofilesystem="$g")
+    done
+    flatpak override --user "${args[@]}"
+}
+
+verify_sync() {
+    local app
+    app=$(detect_app_for_probe)
+    if [[ -z "$app" ]]; then
+        echo "  (no Flatpak apps installed — skipping sandbox probe)"
+        return 0
+    fi
+
+    local host_match sandbox_match
+    host_match=$(fc-match :lang=th 2>/dev/null | sed 's/^[^:]*: //')
+    sandbox_match=$(flatpak run --command=fc-match "$app" :lang=th 2>/dev/null | sed 's/^[^:]*: //' || echo "")
+
+    echo "  Host    (lang=th): ${host_match:-?}"
+    echo "  Sandbox (lang=th): ${sandbox_match:-(probe failed — app may not have fc-match)}"
+    if [[ -n "$sandbox_match" && "$host_match" == "$sandbox_match" ]]; then
+        echo "  Result: PASS — sandbox matches host."
+    else
+        echo "  Result: mismatch (restart running Flatpak apps; new launches should pick up changes)."
+    fi
+}
+
+install_sync_logic() {
+    echo "=== Installing Flatpak host-fontconfig sync ==="
+    echo ""
+
+    # Warn if legacy configs exist
+    local legacy
+    legacy=$(find "$HOME/.config/fontconfig/conf.d" -maxdepth 1 -name "99-*-fonts.conf" \
+        -printf "%f\n" 2>/dev/null \
+        | sed 's/^99-//;s/-fonts\.conf$//' | paste -sd, -)
+    if [[ -n "$legacy" ]]; then
+        echo "  Note: legacy per-language configs active for: $legacy"
+        echo "        Sync runs alongside them; if they conflict, legacy wins."
+        echo ""
+    fi
+
+    echo "Step 1/5 — Writing sync fontconfig snippet..."
+    write_sync_conf
+
+    echo "Step 2/5 — Applying global Flatpak filesystem grants..."
+    apply_sync_grants
+    echo "  Applied: ${SYNC_GRANTS[*]}"
+
+    echo "Step 3/5 — Refreshing host font cache..."
+    fc-cache -f >/dev/null
+
+    echo "Step 4/5 — Wiping per-app fontconfig caches..."
+    wipe_app_caches
+    echo "  Done. Caches will rebuild on next app launch."
+
+    echo "Step 5/5 — Verifying sandbox sees host fonts..."
+    verify_sync
+
+    echo ""
+    echo "Done. Restart any already-running Flatpak apps to pick up the change."
+}
+
+unsync_logic() {
+    local grants_only="${1:-}"
+    echo "=== Reverting Flatpak host-fontconfig sync ==="
+    echo ""
+
+    if [[ "$grants_only" != "--grants-only" ]]; then
+        local target="$HOME/.config/fontconfig/conf.d/$SYNC_FILE_NAME"
+        if [[ -f "$target" ]]; then
+            rm -f "$target"
+            echo "  Removed: $target"
+        else
+            echo "  (no sync conf file to remove)"
+        fi
+    fi
+
+    echo "  Revoking filesystem grants..."
+    revoke_sync_grants
+    echo "  Revoked: ${SYNC_GRANTS[*]}"
+
+    echo "  Refreshing host font cache..."
+    fc-cache -f >/dev/null
+
+    echo "  Wiping per-app fontconfig caches..."
+    wipe_app_caches
+
+    echo ""
+    echo "Done. Restart any already-running Flatpak apps to pick up the change."
+}
+
+show_state() {
+    echo "=== Flatpak Font State ==="
+    echo ""
+
+    if sync_is_installed; then
+        echo "Sync status: INSTALLED"
+    else
+        echo "Sync status: not installed"
+    fi
+    echo ""
+
+    echo "Active Flatpak --user overrides:"
+    local raw
+    raw=$(flatpak override --user --show 2>/dev/null || true)
+    if [[ -z "$raw" ]]; then
+        echo "  (none)"
+    else
+        printf '%s\n' "$raw" | sed 's/^/  /'
+    fi
+    echo ""
+
+    echo "Host fc-match (a few common languages):"
+    local lang
+    for lang in th ja ko zh-cn ar he hi; do
+        printf "  %-6s -> %s\n" "$lang" "$(fc-match :lang=$lang 2>/dev/null | sed 's/^[^:]*: //')"
+    done
+    echo ""
+
+    local probe_app
+    probe_app=$(detect_app_for_probe)
+    if [[ -n "$probe_app" ]]; then
+        echo "Sandbox probe via $probe_app:"
+        for lang in th ja ko; do
+            local out
+            out=$(flatpak run --command=fc-match "$probe_app" :lang=$lang 2>/dev/null \
+                | sed 's/^[^:]*: //' || echo "(probe failed)")
+            printf "  %-6s -> %s\n" "$lang" "${out:-(probe failed)}"
+        done
+    else
+        echo "Sandbox probe: no Flatpak apps installed."
+    fi
+    echo ""
+
+    local apps
+    apps=$(flatpak list --app --columns=application 2>/dev/null | grep -v '^Application$' | wc -l)
+    echo "Installed Flatpak apps: $apps"
+}
+
+show_main_menu() {
+    while true; do
+        echo ""
+        echo "=== Flatpak Font Sync ==="
+        local host_th status apps
+        host_th=$(fc-match :lang=th 2>/dev/null | sed 's/^[^:]*: //')
+        if sync_is_installed; then
+            status="INSTALLED"
+        else
+            status="not installed"
+        fi
+        apps=$(flatpak list --app --columns=application 2>/dev/null | grep -v '^Application$' | wc -l)
+        echo "Host Thai (lang=th) resolves to: ${host_th:-?}"
+        echo "Sync status: $status  ($apps Flatpak app(s) detected)"
+        echo ""
+        echo "  [1] Install host-fontconfig sync (recommended)"
+        echo "  [2] Re-sync (after installing new apps or fonts)"
+        echo "  [3] Show current state (dry-run)"
+        echo "  [4] Uninstall (revert sync + revoke grants)"
+        echo "  [5] Legacy: force a specific font for one language"
+        echo "  [q] Quit"
+        echo ""
+        read -rp "Choice: " _choice
+        echo ""
+        case "$_choice" in
+            1|2) install_sync_logic ;;
+            3)   show_state ;;
+            4)   unsync_logic ;;
+            5)
+                run_interactive_install
+                install_logic "$LANG_CODE" "$FONT_FAMILY" "${APPLY_ALL:-}" "$REPO_ROOT"
+                # legacy_install may exit on user abort; only reach here on success
+                ;;
+            q|Q|"") echo "Bye."; return 0 ;;
+            *) echo "Invalid choice." ;;
+        esac
+    done
 }
 
 # --- Main ---
@@ -427,8 +739,15 @@ check_dependencies
 REPO_ROOT=$(get_repo_root)
 
 if [[ $# -eq 0 ]]; then
-    run_interactive_install
-    install_logic "$LANG_CODE" "$FONT_FAMILY" "${APPLY_ALL:-}" "$REPO_ROOT"
+    show_main_menu
+elif [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    show_usage
+elif [[ "$1" == "sync" ]]; then
+    install_sync_logic
+elif [[ "$1" == "unsync" ]]; then
+    unsync_logic
+elif [[ "$1" == "state" ]]; then
+    show_state
 elif [[ "$1" == "list" ]]; then
     list_configs
 elif [[ "$1" == "uninstall" ]]; then

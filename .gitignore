@@ -1,2 +1,5 @@
 .opencode/
 gaia.log
+__pycache__/
+*.pyc
+limine_output.txt
