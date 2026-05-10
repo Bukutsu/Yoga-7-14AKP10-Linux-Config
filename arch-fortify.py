@@ -286,6 +286,22 @@ def clean_limine():
     backup_file(conf)
     content = conf.read_text()
 
+    # ── Strip CachyOS theme block ────────────────────────────────
+    stripped = re.sub(
+        r'^# CachyOS Limine theme\n.*?\nwallpaper: boot\(\):/limine-splash\.png[^\n]*\n?',
+        '',
+        content,
+        flags=re.DOTALL | re.MULTILINE,
+    )
+    if stripped != content:
+        if DRY_RUN:
+            info("Would strip CachyOS Limine theme block.")
+        else:
+            safe_write(conf, stripped, desc="removed CachyOS theme block")
+        content = stripped
+    # Collapse multiple blank lines after header into one
+    content = re.sub(r'\n{3,}', '\n\n', content)
+
     # ── Phase A: Ensure /+Arch Linux entry exists ────────────────
     if "/+Arch Linux" not in content and "/+CachyOS" in content:
         info("No /+Arch Linux entry found; /+CachyOS present. Renaming...")
@@ -362,11 +378,28 @@ def clean_limine():
         print(f"  other_entries:{len(oe)} lines (dual-boot etc. — preserved)")
         print(f"  efi/other:    {len(ef)} lines")
 
-    # ── If nothing to do, still validate then return ──────────────
-    if not sn and not sk:
-        ok("Limine already clean, nothing to change.")
-        _validate_limine(conf, lines)
-        return
+    # ── Post-process `ar`: remove duplicate //Arch Linux sections ──
+    # limine-snapper-sync may have created one underneath the current
+    # entry when the OS name changed.  We keep //Snapshots instead.
+    filtered_ar = []
+    skip_dup = False
+    for ln in ar:
+        s = ln.strip()
+        # Detect a //Arch Linux line used as a snapshot section title
+        if s == '//Arch Linux':
+            skip_dup = True
+            continue
+        if skip_dup:
+            # End of the duplicate block: next top-level entry or //Snapshots
+            if s.startswith('//Snapshots') or s.startswith('/+') or s.startswith('//EFI') or s.startswith('/EFI'):
+                skip_dup = False
+                # Let //Snapshots through, it's the canonical name
+                if s.startswith('//Snapshots'):
+                    filtered_ar.append(ln)
+                continue
+            continue
+        filtered_ar.append(ln)
+    ar = filtered_ar
 
     # ── Re-indent orphaned snapshots for nesting under /+Arch Linux ──
     if sn:
@@ -391,6 +424,30 @@ def clean_limine():
             ar.pop()
 
         ar = ar[:insert_at] + ["\n"] + reindented + ["\n"] + ar[insert_at:]
+
+    # ── Post-process `oe`: strip orphaned kernel-entry fragments ──
+    orphan_markers = [
+        "### This kernel entry", "protocol: linux",
+        "kernel-id=", "Kernel version:",
+    ]
+    oe_clean = []
+    in_orphan = False
+    for ln in oe:
+        s = ln.strip()
+        # Start of an orphaned kernel fragment (indented, auto-gen comment)
+        if (ln.startswith(" ") and "### This kernel entry" in s) or \
+           (ln.startswith(" ") and "protocol: linux" in s):
+            in_orphan = True
+        if in_orphan:
+            # End: blank line or next section header
+            if not s or s.startswith("/+") or s.startswith("/EFI") or s.startswith("//EFI"):
+                in_orphan = False
+                if s:
+                    oe_clean.append(ln)
+                continue
+            continue  # skip orphan content
+        oe_clean.append(ln)
+    oe = oe_clean
 
     # ── Compose output ────────────────────────────────────────────
     out_lines = hs + ["\n"] + ar + oe + ef
