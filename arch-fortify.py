@@ -12,18 +12,22 @@ Usage:
   sudo python3 arch-fortify.py --plymouth-theme bgrt  # Customize theme
 """
 
+from __future__ import annotations
+
 import argparse
+import atexit
 import fcntl
 import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
 
-__version__ = "2.2.0"
+__version__ = "2.3.0"
 
 if sys.version_info < (3, 9):
     print("Error: Python 3.9+ required (uses Path.readlink() and other features)")
@@ -42,10 +46,54 @@ HAD_ERRORS = False
 SKIP_SECTIONS = set()
 PLYMOUTH_THEME = "bgrt"
 
+_lock_fd: int | None = None
+MAX_BACKUPS = 10
+AUDIT_LOG = Path("/var/lib/arch-fortify/audit.log")
 
 def _backup_filename(path: Path) -> str:
     """Generate a safe, unique backup filename from a full path."""
     return str(path).lstrip('/').replace('/', '_')
+
+
+def _handle_signal(signum, frame):
+    """Clean up and exit gracefully on SIGINT/SIGTERM."""
+    release_lock()
+    sys.exit(128 + signum)
+
+
+def _setup_signal_handlers():
+    """Register signal and atexit handlers for cleanup."""
+    signal.signal(signal.SIGINT, _handle_signal)
+    signal.signal(signal.SIGTERM, _handle_signal)
+    atexit.register(release_lock)
+
+
+def prune_backups(keep: int | None = None):
+    """Remove old backup directories beyond the retention count."""
+    limit = keep if keep is not None else MAX_BACKUPS
+    if not BACKUP_ROOT.exists():
+        return
+    dirs = sorted([d for d in BACKUP_ROOT.iterdir() if d.is_dir()])
+    if len(dirs) <= limit:
+        return
+    for d in dirs[:-limit]:
+        try:
+            shutil.rmtree(d)
+            info(f"Pruned old backup: {d.name}")
+        except Exception as e:
+            warn(f"Failed to prune backup {d.name}: {e}")
+
+
+def audit(entry: str):
+    """Append a timestamped entry to the audit log (best-effort)."""
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with open(AUDIT_LOG, "a") as f:
+            f.write(f"[{ts}] {entry}\n")
+    except Exception:
+        pass
+
 
 # ── Utilities ─────────────────────────────────────────────────────────
 
@@ -63,16 +111,26 @@ def err(msg):   global HAD_ERRORS; HAD_ERRORS = True; print(f"  {_color('\033[31
 
 def acquire_lock():
     """Prevent concurrent runs."""
+    global _lock_fd
     LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
     try:
         fd = os.open(str(LOCK_FILE), os.O_CREAT | os.O_RDWR, 0o644)
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _lock_fd = fd
         return fd
     except (IOError, OSError):
         fail("Another instance is already running (lock held).")
 
 
 def release_lock():
+    """Release the lock file descriptor and remove the lock file."""
+    global _lock_fd
+    if _lock_fd is not None:
+        try:
+            os.close(_lock_fd)
+        except OSError:
+            pass
+        _lock_fd = None
     LOCK_FILE.unlink(missing_ok=True)
 
 
@@ -87,6 +145,7 @@ def safe_symlink(target: str, link: str):
         return
     link_p.unlink(missing_ok=True)
     link_p.symlink_to(target_p)
+    audit(f"symlink {link} -> {target}")
     ok(f"Symlinked {link} -> {target}")
 
 
@@ -130,6 +189,7 @@ def safe_write(path: Path, content: str, desc: str = ""):
         fh.flush()
         os.fsync(fh.fileno())
     tmp.rename(path)
+    audit(f"wrote {path}" + (f" ({desc})" if desc else ""))
     ok(f"Wrote {path}" + (f"  ({desc})" if desc else ""))
 
 
@@ -197,10 +257,10 @@ def restore_backup(timestamp: str | None = None):
         safe_name = bak.name.removesuffix(".bak")
         if not manifest:
             # Legacy fallback: try to infer path from filename
-            orig_path = "/" + safe_name.replace("_", "/", 1) if safe_name else None
+            orig_path = "/" + safe_name.replace("_", "/", 1) if safe_name else ""
         else:
             # Find original path from manifest by matching safe_name
-            orig_path = None
+            orig_path = ""
             for full_path, stored_name in manifest.items():
                 if stored_name == safe_name:
                     orig_path = full_path
@@ -377,6 +437,10 @@ def _validate_limine(final_content: str, entry_count: int) -> bool:
 
 def clean_limine(backup_dir: Path):
     print("\n── 4. Limine ──")
+
+    if not Path("/boot").is_mount():
+        warn("/boot is not mounted — skipping Limine operations.")
+        return
 
     conf = LIMINE_CONF
     if not conf.exists():
@@ -725,6 +789,7 @@ def main():
     if args.restore is not None:
         if not os.geteuid() == 0:
             fail("Must run as root (sudo).")
+        _setup_signal_handlers()
         acquire_lock()
         try:
             restore_backup(args.restore)
@@ -745,12 +810,14 @@ def main():
     if os.geteuid() != 0:
         fail("Must run as root (sudo).")
 
+    _setup_signal_handlers()
     fd = acquire_lock()
     try:
         backup_dir = BACKUP_ROOT / f"{datetime.now():%Y%m%d_%H%M%S}"
 
         if not DRY_RUN:
             backup_dir.mkdir(parents=True, exist_ok=True)
+            prune_backups()
 
         if "hooks" not in SKIP_SECTIONS:
             mask_branding_hooks()
@@ -769,6 +836,7 @@ def main():
             print("═══ Dry run complete. Run without --dry to apply. ═══")
         else:
             ok("De-branding complete. Your system is now persistently Arch Linux.")
+            audit("de-branding completed successfully")
             warn("A reboot is recommended to see all changes take effect.")
     finally:
         release_lock()
