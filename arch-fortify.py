@@ -31,11 +31,16 @@ ROLLBACK_STEPS = []
 
 # ── Utilities ─────────────────────────────────────────────────────────
 
-def info(msg):  print(f"  [INFO] {msg}")
-def ok(msg):    print(f"  [OK]   {msg}")
-def warn(msg):  print(f"  [WARN] {msg}")
-def fail(msg):  print(f"  [FAIL] {msg}"); sys.exit(1)
-def err(msg):   global HAD_ERRORS; HAD_ERRORS = True; print(f"  [ERROR] {msg}")
+def _color(code: str, text: str) -> str:
+    if hasattr(sys.stdout, 'isatty') and sys.stdout.isatty():
+        return f"{code}{text}\033[0m"
+    return text
+
+def info(msg):  print(f"  {_color('\033[34;1m', 'INFO')}  {msg}")
+def ok(msg):    print(f"  {_color('\033[32;1m', ' OK ')}  {msg}")
+def warn(msg):  print(f"  {_color('\033[33;1m', 'WARN')}  {msg}")
+def fail(msg):  print(f"  {_color('\033[31;1m', 'FAIL')}  {msg}"); sys.exit(1)
+def err(msg):   global HAD_ERRORS; HAD_ERRORS = True; print(f"  {_color('\033[31;1m', 'ERR ')}  {msg}")
 
 
 def acquire_lock():
