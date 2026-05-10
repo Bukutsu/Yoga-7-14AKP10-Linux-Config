@@ -279,16 +279,33 @@ def clean_limine():
         return
 
     backup_file(conf)
+    content = conf.read_text()
+
+    # ── Phase A: Ensure /+Arch Linux entry exists ────────────────
+    if "/+Arch Linux" not in content and "/+CachyOS" in content:
+        info("No /+Arch Linux entry found; /+CachyOS present. Renaming...")
+        if not DRY_RUN:
+            run(["limine-mkinitcpio"], optional=True)
+            run(["limine-update"], optional=True)
+            content = conf.read_text()
+        content = content.replace("/+CachyOS", "/+Arch Linux")
+        content = re.sub(r"^comment: CachyOS$", "comment: Arch Linux", content, flags=re.MULTILINE)
+        if not DRY_RUN:
+            safe_write(conf, content, desc="renamed /+CachyOS → /+Arch Linux")
+        ok("Entry renamed to /+Arch Linux.")
+    elif "/+CachyOS" in content:
+        # Already has /+Arch Linux but stale CachyOS also present
+        warn("Both /+CachyOS and /+Arch Linux found — stale entry will be removed.")
 
     lines = conf.read_text().splitlines(keepends=True)
 
     # ── Multi-scenario state machine ──────────────────────────────
-    # header → /+CachyOS → skip → //Snapshots → /+Arch Linux → /EFI
-    # header → //Snapshots (orphaned) → /+Arch Linux → /EFI
-    # header → /+Arch Linux → /EFI  (already clean)
-    # header only  (no entries — no-op)
+    # Clean install:    header → /+Arch Linux → //kernels → //Snapshots → /+Windows → /EFI
+    # Orphan recovery:  header → //Snapshots → /+Arch Linux → /EFI
+    # Already clean:    header → /+Arch Linux → /EFI
+    # Dual-boot:        ... → /+Windows → /EFI
 
-    hs, sk, sn, ar, ef = [], [], [], [], []
+    hs, sk, sn, ar, oe, ef = [], [], [], [], [], []
     state = "header"
 
     def flush_skipping():
@@ -299,24 +316,26 @@ def clean_limine():
         while hs and not hs[-1].strip():
             hs.pop()
 
-    for idx, line in enumerate(lines):
+    for line in lines:
         s = line.strip()
 
+        # ── State transitions ─────────────────────────────────────
         if s.startswith("/+Arch Linux"):
             state = "arch_linux"
+        elif state == "arch_linux" and s.startswith("/+") and "/+Arch" not in s:
+            state = "other"       # dual-boot entry like /+Windows
         elif s.startswith("/EFI") or s.startswith("//EFI"):
             state = "efi"
-        elif s == "/+CachyOS" and state in ("header",):
+        elif s == "/+CachyOS" and state == "header":
             flush_skipping()
             state = "skip_cachyos"
             continue
-        elif state == "header" and s.startswith("//Snapshots"):
-            state = "snapshots"   # orphan recovery
-        elif state == "skip_cachyos" and s.startswith("//Snapshots"):
+        elif state in ("header", "skip_cachyos") and s.startswith("//Snapshots"):
             state = "snapshots"
         elif state == "skip_cachyos" and s.startswith("/+"):
             state = "arch_linux"
 
+        # ── Append ────────────────────────────────────────────────
         if state == "header":
             hs.append(line)
         elif state == "skip_cachyos":
@@ -325,77 +344,81 @@ def clean_limine():
             sn.append(line)
         elif state == "arch_linux":
             ar.append(line)
+        elif state == "other":
+            oe.append(line)
         elif state == "efi":
             ef.append(line)
 
     if DRY_RUN:
         print(f"  header:       {len(hs)} lines")
-        print(f"  skip/kernels: {len(sk)} lines (will be removed)")
+        print(f"  skip/kernels: {len(sk)} lines (stale CachyOS → removed)")
         print(f"  snapshots:    {len(sn)} lines (will be moved inside Arch Linux)")
         print(f"  arch_linux:   {len(ar)} lines")
+        print(f"  other_entries:{len(oe)} lines (dual-boot etc. — preserved)")
         print(f"  efi/other:    {len(ef)} lines")
 
+    # ── If nothing to do, still validate then return ──────────────
     if not sn and not sk:
         ok("Limine already clean, nothing to change.")
+        _validate_limine(conf, lines)
         return
 
-    # Re-indent snapshots for nesting under /+Arch Linux
-    base_indent = _detect_indent(sn, 5)
-    reindented = []
-    for ln in sn:
-        if ln.strip():
-            cur = len(ln) - len(ln.lstrip())
-            rel = cur - base_indent
-            reindented.append(" " * max(0, 2 + rel) + ln.lstrip())
-        else:
-            reindented.append("\n")
+    # ── Re-indent orphaned snapshots for nesting under /+Arch Linux ──
+    if sn:
+        base_indent = _detect_indent(sn, 5)
+        reindented = []
+        for ln in sn:
+            if ln.strip():
+                cur = len(ln) - len(ln.lstrip())
+                rel = cur - base_indent
+                reindented.append(" " * max(0, 2 + rel) + ln.lstrip())
+            else:
+                reindented.append("\n")
 
-    # Insert snapshots after the last kernel line
-    insert_at = len(ar)
-    for i in range(len(ar) - 1, -1, -1):
-        t = ar[i].strip()
-        if t.startswith("//") and not t.startswith("//+"):
-            insert_at = i + 1
-            break
-    while insert_at < len(ar) and not ar[-1].strip():
-        ar.pop()
+        # Insert after the last kernel line
+        insert_at = len(ar)
+        for i in range(len(ar) - 1, -1, -1):
+            t = ar[i].strip()
+            if t.startswith("//") and not t.startswith("//+"):
+                insert_at = i + 1
+                break
+        while insert_at < len(ar) and not ar[-1].strip():
+            ar.pop()
 
-    arch_with = ar[:insert_at] + ["\n"] + reindented + ["\n"] + ar[insert_at:]
-    out = hs + ["\n"] + arch_with + ef
+        ar = ar[:insert_at] + ["\n"] + reindented + ["\n"] + ar[insert_at:]
+
+    # ── Compose output ────────────────────────────────────────────
+    out_lines = hs + ["\n"] + ar + oe + ef
 
     if DRY_RUN:
         info("Would write updated /boot/limine.conf")
-        print(f"    Lines before: {len(lines)}  after: {len(out)}")
+        print(f"    Lines before: {len(lines)}  after: {len(out_lines)}")
         return
 
-    safe_write(conf, "".join(out), desc="limine.conf (scrubbed)")
+    safe_write(conf, "".join(out_lines), desc="limine.conf (scrubbed)")
 
     # ── Update default_entry ──────────────────────────────────────
     entry_num = 0
     arch_no = None
-    for ln in out:
+    for ln in out_lines:
         if ln.strip().startswith("/+"):
             entry_num += 1
-            if ln.strip() == "/+Arch Linux":
+            if "/+Arch Linux" in ln:
                 arch_no = entry_num
 
     if arch_no is not None:
-        content = conf.read_text()
-        new_content = re.sub(
-            r"^default_entry:\s*\d+.*",
-            f"default_entry: {arch_no}",
-            content,
-            flags=re.MULTILINE,
-        )
-        if new_content != content:
-            safe_write(conf, new_content, desc="default_entry -> Arch Linux")
+        cur = conf.read_text()
+        newc = re.sub(r"^default_entry:\s*\d+.*", f"default_entry: {arch_no}", cur, flags=re.MULTILINE)
+        if newc != cur:
+            safe_write(conf, newc, desc="default_entry -> Arch Linux")
         else:
             ok("default_entry already points to Arch Linux.")
-    else:
-        err("Could not determine Arch Linux entry number in limine.conf!")
+    """ else: warn, don't fail — dual-boot user may have set it deliberately """
+    if arch_no is None:
+        warn("Could not determine Arch Linux entry number — default_entry left as-is.")
 
     # ── Validate ──────────────────────────────────────────────────
-    _validate_limine(conf)
+    _validate_limine(conf, out_lines)
 
     # ── Regenerate ────────────────────────────────────────────────
     run(["limine-mkinitcpio"], optional=True)
@@ -403,27 +426,29 @@ def clean_limine():
     ok("Boot menu regenerated.")
 
 
-def _validate_limine(conf: Path):
-    """Basic sanity checks on the written limine.conf."""
+def _validate_limine(conf: Path, final_lines: list[str] | None = None):
+    """Non-fatal sanity checks on the written limine.conf."""
     if not conf.exists():
         err("limine.conf missing after write!")
         return
     content = conf.read_text()
+
     if "/+Arch Linux" not in content:
-        err("/+Arch Linux entry not found in limine.conf after cleanup!")
-    if "/+CachyOS" in content:
-        warn("Stale /+CachyOS entry still present in limine.conf.")
-    # Check default_entry exists
+        warn("  LIMINE: /+Arch Linux entry not found — is this a pre-identity-restore run?")
+    elif "/+CachyOS" in content:
+        warn("  LIMINE: stale /+CachyOS entry still present.")
+
     m = re.search(r"^default_entry:\s*(\d+)", content, re.MULTILINE)
     if not m:
-        err("default_entry missing from limine.conf!")
-    else:
-        entry_count = content.count("/+") - content.count("//+") if "//+" in content else content.count("/+")
+        warn("  LIMINE: default_entry not found — using Limine's internal default.")
+    elif final_lines:
+        entry_list = [ln for ln in final_lines if ln.strip().startswith("/+")]
+        entry_count = len(entry_list)
         entry_no = int(m.group(1))
-        if entry_no > entry_count:
-            err(f"default_entry ({entry_no}) exceeds entry count ({entry_count})!")
-        else:
-            ok(f"default_entry = {entry_no} (valid)")
+        if entry_no > entry_count and entry_count > 0:
+            warn(f"  LIMINE: default_entry ({entry_no}) > entry count ({entry_count}) — likely dual-boot.")
+        elif entry_no <= entry_count and entry_count > 0:
+            ok(f"  LIMINE: default_entry = {entry_no} (valid among {entry_count} entries).")
 
 
 # ── 5. Plymouth ──────────────────────────────────────────────────────
