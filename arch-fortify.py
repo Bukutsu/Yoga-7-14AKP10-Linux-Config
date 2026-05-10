@@ -7,9 +7,14 @@ Usage:
   sudo python3 arch-fortify.py --dry        # Preview only
   sudo python3 arch-fortify.py --restore    # Roll back latest backup
   sudo python3 arch-fortify.py --restore 20260509_182622  # Specific backup
+  sudo python3 arch-fortify.py --list-backups  # List available backups
+  sudo python3 arch-fortify.py --skip hooks,limine  # Skip specific sections
+  sudo python3 arch-fortify.py --plymouth-theme bgrt  # Customize theme
 """
 
+import argparse
 import fcntl
+import json
 import os
 import re
 import shutil
@@ -18,16 +23,29 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-__version__ = "2.0.0"
+__version__ = "2.2.0"
 
-BACKUP_DIR = Path(f"/var/lib/arch-fortify/backups/{datetime.now():%Y%m%d_%H%M%S}")
+if sys.version_info < (3, 9):
+    print("Error: Python 3.9+ required (uses Path.readlink() and other features)")
+    sys.exit(1)
+
 BACKUP_ROOT = Path("/var/lib/arch-fortify/backups")
-LOCK_FILE = Path("/var/lib/arch-fortify/lock")
+LOCK_FILE   = Path("/var/lib/arch-fortify/lock")
+
+LIMINE_CONF   = Path("/boot/limine.conf")
+CACHYOS_ENTRY = "/+CachyOS"
+ARCH_ENTRY    = "/+Arch Linux"
 
 DRY_RUN = False
 VERBOSE = False
 HAD_ERRORS = False
-ROLLBACK_STEPS = []
+SKIP_SECTIONS = set()
+PLYMOUTH_THEME = "bgrt"
+
+
+def _backup_filename(path: Path) -> str:
+    """Generate a safe, unique backup filename from a full path."""
+    return str(path).lstrip('/').replace('/', '_')
 
 # ── Utilities ─────────────────────────────────────────────────────────
 
@@ -49,6 +67,7 @@ def acquire_lock():
     try:
         fd = os.open(str(LOCK_FILE), os.O_CREAT | os.O_RDWR, 0o644)
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return fd
     except (IOError, OSError):
         fail("Another instance is already running (lock held).")
 
@@ -101,31 +120,60 @@ def run(args, check=True, optional=False):
 
 
 def safe_write(path: Path, content: str, desc: str = ""):
-    """Write *content* to *path*, avoiding partial writes on crash."""
+    """Write *content* to *path*, fsyncing before rename for crash safety on FAT32/ESP."""
     if DRY_RUN:
         info(f"Would write {path}" + (f"  ({desc})" if desc else ""))
         return
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(content)
+    with open(tmp, "w") as fh:
+        fh.write(content)
+        fh.flush()
+        os.fsync(fh.fileno())
     tmp.rename(path)
     ok(f"Wrote {path}" + (f"  ({desc})" if desc else ""))
 
 
 # ── Backup / Restore ──────────────────────────────────────────────────
 
-def backup_file(path: Path) -> Path | None:
-    """Copy *path* into the backup directory.  Returns the backup path."""
+def backup_file(path: Path, backup_dir: Path) -> Path | None:
+    """Copy *path* into the backup directory and record its original path in manifest.json.
+
+    Uses full path as manifest key to avoid collisions (e.g., /etc/issue vs /usr/share/factory/etc/issue).
+    """
     if not path.exists():
         return None
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    dst = BACKUP_DIR / f"{path.name}.bak"
+    safe_name = _backup_filename(path)
+    dst = backup_dir / f"{safe_name}.bak"
     if DRY_RUN:
         info(f"Would backup {path} -> {dst}")
         return dst
+    backup_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(path, dst)
-    ROLLBACK_STEPS.append(("restore", str(path), str(dst)))
     info(f"Backed up {path}")
+
+    manifest_path = backup_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+    manifest[str(path)] = safe_name
+    manifest_path.write_text(json.dumps(manifest, indent=2))
+
     return dst
+
+
+def list_backups():
+    """List all available backups with timestamps and file counts."""
+    if not BACKUP_ROOT.exists():
+        print("No backups found.")
+        return
+
+    dirs = sorted([d for d in BACKUP_ROOT.iterdir() if d.is_dir()])
+    if not dirs:
+        print("No backups found.")
+        return
+
+    print("\nAvailable backups:")
+    for bak_dir in reversed(dirs):
+        file_count = len(list(bak_dir.glob("*.bak")))
+        print(f"  {bak_dir.name}  ({file_count} files)")
 
 
 def restore_backup(timestamp: str | None = None):
@@ -133,21 +181,44 @@ def restore_backup(timestamp: str | None = None):
     if timestamp:
         src_dir = BACKUP_ROOT / timestamp
     else:
-        snaps = sorted(BACKUP_ROOT.iterdir())
-        if not snaps:
+        dirs = sorted([d for d in BACKUP_ROOT.iterdir() if d.is_dir()])
+        if not dirs:
             fail("No backups found.")
-        src_dir = snaps[-1]
+        src_dir = dirs[-1]
     if not src_dir.is_dir():
         fail(f"Backup directory {src_dir} not found.")
 
-    for bak in sorted(src_dir.glob("*.bak")):
-        original_name = bak.name.removesuffix(".bak")
-        dest = Path("/boot" if original_name == "limine.conf" else "/etc") / original_name
+    manifest: dict[str, str] = {}
+    manifest_path = src_dir / "manifest.json"
+    if manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text())
+
+    for bak in sorted(src_dir.glob("**/*.bak")):
+        safe_name = bak.name.removesuffix(".bak")
+        if not manifest:
+            # Legacy fallback: try to infer path from filename
+            orig_path = "/" + safe_name.replace("_", "/", 1) if safe_name else None
+        else:
+            # Find original path from manifest by matching safe_name
+            orig_path = None
+            for full_path, stored_name in manifest.items():
+                if stored_name == safe_name:
+                    orig_path = full_path
+                    break
+            if not orig_path:
+                warn(f"No manifest entry for {safe_name}, skipping.")
+                continue
+
+        dest = Path(orig_path)
         if DRY_RUN:
             info(f"Would restore {bak} -> {dest}")
             continue
-        shutil.copy2(bak, dest)
-        ok(f"Restored {bak.name} -> {dest}")
+        try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(bak, dest)
+            ok(f"Restored {dest}")
+        except Exception as e:
+            err(f"Failed to restore {dest}: {e}")
     run(["limine-update"], optional=True)
 
 
@@ -167,16 +238,16 @@ def mask_branding_hooks():
 
     for hook in sorted(hook_dir.glob("*.hook")):
         content = hook.read_text()
-        if "cachyos" not in content:
+        # Only consider hooks from CachyOS that modify identity or run branding
+        if "cachyos" not in content.lower():
             continue
 
-        # Catch hooks targeting identity packages OR executing branding scripts
-        targets_identity = any(t in content for t in [
-            "os-release", "lsb-release", "issue", "filesystem",
+        # Detect: hooks that target identity packages or execute branding operations
+        targets_identity = any(pkg in content for pkg in [
+            "os-release", "lsb-release", "issue", "filesystem", "cachyos-branding",
         ])
-        runs_branding = "Exec" in content and (
-            "cachyos-branding" in content or "branding" in content.lower()
-        )
+        # Also check for hooks that explicitly run branding commands
+        runs_branding = bool(re.search(r'Exec\s*=.*(?:branding|cachyos)', content, re.IGNORECASE))
 
         if not (targets_identity or runs_branding):
             continue
@@ -199,12 +270,12 @@ def mask_branding_hooks():
 
 # ── 2. Identity Restoration ──────────────────────────────────────────
 
-def restore_identity():
+def restore_identity(backup_dir: Path):
     print("\n── 2. Identity Restoration ──")
 
-    backup_file(Path("/etc/os-release"))
-    backup_file(Path("/etc/lsb-release"))
-    backup_file(Path("/etc/issue"))
+    backup_file(Path("/etc/os-release"), backup_dir)
+    backup_file(Path("/etc/lsb-release"), backup_dir)
+    backup_file(Path("/etc/issue"), backup_dir)
 
     run(["pacman", "-S", "--noconfirm", "--needed", "filesystem", "lsb-release"])
 
@@ -246,7 +317,7 @@ def restore_identity():
 
 # ── 3. GDM Logo ──────────────────────────────────────────────────────
 
-def hide_gdm_logo():
+def hide_gdm_logo(backup_dir: Path):
     print("\n── 3. GDM Logo ──")
 
     if not shutil.which("glib-compile-schemas"):
@@ -260,7 +331,7 @@ def hide_gdm_logo():
         ok("GDM schema override already correct.")
         return
 
-    backup_file(override)
+    backup_file(override, backup_dir)
     safe_write(override, content, desc="GDM logo schema override")
     run(["glib-compile-schemas", "/usr/share/glib-2.0/schemas/"])
     ok("GDM schema override installed.")
@@ -275,50 +346,80 @@ def _detect_indent(lines: list[str], default: int = 5) -> int:
     return default
 
 
-def clean_limine():
+def _validate_limine(final_content: str, entry_count: int) -> bool:
+    """Sanity-check composed limine.conf content before writing.
+
+    Returns False to block the write when a critical problem is detected.
+    """
+    ok_to_write = True
+
+    if ARCH_ENTRY not in final_content:
+        if CACHYOS_ENTRY in final_content:
+            warn(f"  LIMINE: {CACHYOS_ENTRY!r} present but no {ARCH_ENTRY!r} — run identity step first.")
+        else:
+            err(f"  LIMINE: No {ARCH_ENTRY!r} entry in composed config — refusing to write (would be unbootable).")
+            ok_to_write = False
+    elif CACHYOS_ENTRY in final_content:
+        warn(f"  LIMINE: stale {CACHYOS_ENTRY!r} still present after scrubbing.")
+
+    m = re.search(r"^default_entry:\s*(\d+)", final_content, re.MULTILINE)
+    if not m:
+        warn("  LIMINE: default_entry not found — Limine will use its internal default.")
+    elif entry_count > 0:
+        entry_no = int(m.group(1))
+        if entry_no > entry_count:
+            warn(f"  LIMINE: default_entry ({entry_no}) > entry count ({entry_count}) — check dual-boot setup.")
+        else:
+            ok(f"  LIMINE: default_entry = {entry_no} (valid, {entry_count} entries).")
+
+    return ok_to_write
+
+
+def clean_limine(backup_dir: Path):
     print("\n── 4. Limine ──")
 
-    conf = Path("/boot/limine.conf")
+    conf = LIMINE_CONF
     if not conf.exists():
-        info("/boot/limine.conf not found, skipping.")
+        info(f"{conf} not found, skipping.")
         return
 
-    backup_file(conf)
+    backup_file(conf, backup_dir)
     content = conf.read_text()
 
     # ── Strip CachyOS theme block ────────────────────────────────
+    # Match the comment line plus all consecutive non-blank lines that follow,
+    # regardless of field order or whether the wallpaper line is present.
     stripped = re.sub(
-        r'^# CachyOS Limine theme\n.*?\nwallpaper: boot\(\):/limine-splash\.png[^\n]*\n?',
+        r'^# CachyOS Limine theme[^\n]*\n(?:[^\n]+\n)*',
         '',
         content,
-        flags=re.DOTALL | re.MULTILINE,
+        flags=re.MULTILINE,
     )
     if stripped != content:
-        if DRY_RUN:
-            info("Would strip CachyOS Limine theme block.")
-        else:
-            safe_write(conf, stripped, desc="removed CachyOS theme block")
         content = stripped
-    # Collapse multiple blank lines after header into one
+    # Collapse multiple blank lines into one
     content = re.sub(r'\n{3,}', '\n\n', content)
 
     # ── Phase A: Ensure /+Arch Linux entry exists ────────────────
-    if "/+Arch Linux" not in content and "/+CachyOS" in content:
-        info("No /+Arch Linux entry found; /+CachyOS present. Renaming...")
+    _regenerated = False
+    if ARCH_ENTRY not in content and CACHYOS_ENTRY in content:
+        info(f"No {ARCH_ENTRY!r} entry found; {CACHYOS_ENTRY!r} present. Renaming...")
         if not DRY_RUN:
             run(["limine-mkinitcpio"], optional=True)
             run(["limine-update"], optional=True)
+            _regenerated = True
             content = conf.read_text()
-        content = content.replace("/+CachyOS", "/+Arch Linux")
+        content = content.replace(CACHYOS_ENTRY, ARCH_ENTRY)
         content = re.sub(r"^comment: CachyOS$", "comment: Arch Linux", content, flags=re.MULTILINE)
-        if not DRY_RUN:
-            safe_write(conf, content, desc="renamed /+CachyOS → /+Arch Linux")
-        ok("Entry renamed to /+Arch Linux.")
-    elif "/+CachyOS" in content:
+        safe_write(conf, content, desc=f"renamed {CACHYOS_ENTRY!r} → {ARCH_ENTRY!r}")
+        ok(f"Entry renamed to {ARCH_ENTRY!r}.")
+    elif CACHYOS_ENTRY in content:
         # Already has /+Arch Linux but stale CachyOS also present
-        warn("Both /+CachyOS and /+Arch Linux found — stale entry will be removed.")
+        warn(f"Both {CACHYOS_ENTRY!r} and {ARCH_ENTRY!r} found — stale entry will be removed.")
 
-    lines = conf.read_text().splitlines(keepends=True)
+    # Use the in-memory content (includes theme strip and blank-line collapse)
+    # so dry-run and non-rename paths see the same data the state machine will process.
+    lines = content.splitlines(keepends=True)
 
     # ── Multi-scenario state machine ──────────────────────────────
     # Clean install:    header → /+Arch Linux → //kernels → //Snapshots → /+Windows → /EFI
@@ -332,7 +433,8 @@ def clean_limine():
     def flush_skipping():
         while hs and not hs[-1].strip():
             hs.pop()
-        if hs and "comment:" in hs[-1]:
+        # Only pop a genuine `comment: …` key line, not arbitrary lines containing "comment:"
+        if hs and re.match(r'\s*comment:', hs[-1]):
             hs.pop()
         while hs and not hs[-1].strip():
             hs.pop()
@@ -341,20 +443,25 @@ def clean_limine():
         s = line.strip()
 
         # ── State transitions ─────────────────────────────────────
-        if s.startswith("/+Arch Linux"):
-            state = "arch_linux"
-        elif state == "arch_linux" and s.startswith("/+") and "/+Arch" not in s:
-            state = "other"       # dual-boot entry like /+Windows
-        elif s.startswith("/EFI") or s.startswith("//EFI"):
+        # Priority: EFI terminates all → Arch always recognized →
+        # CachyOS caught from any state → per-state exits.
+        if s.startswith("/EFI") or s.startswith("//EFI"):
             state = "efi"
-        elif s == "/+CachyOS" and state == "header":
-            flush_skipping()
+        elif s.startswith(ARCH_ENTRY):
+            state = "arch_linux"
+        elif s.startswith(CACHYOS_ENTRY):
+            if state == "header":
+                flush_skipping()
             state = "skip_cachyos"
             continue
+        elif state in ("arch_linux", "other") and s.startswith("/+"):
+            state = "other"           # dual-boot entry like /+Windows
+        elif state == "snapshots" and s.startswith("/+"):
+            state = "other"           # exit snapshots on the next top-level entry
         elif state in ("header", "skip_cachyos") and s.startswith("//Snapshots"):
             state = "snapshots"
         elif state == "skip_cachyos" and s.startswith("/+"):
-            state = "arch_linux"
+            state = "arch_linux"      # orphan-recovery: first /+ after CachyOS block
 
         # ── Append ────────────────────────────────────────────────
         if state == "header":
@@ -385,24 +492,21 @@ def clean_limine():
     skip_dup = False
     for ln in ar:
         s = ln.strip()
-        # Detect a //Arch Linux line used as a snapshot section title
         if s == '//Arch Linux':
             skip_dup = True
             continue
         if skip_dup:
-            # End of the duplicate block: next top-level entry or //Snapshots
             if s.startswith('//Snapshots') or s.startswith('/+') or s.startswith('//EFI') or s.startswith('/EFI'):
                 skip_dup = False
-                # Let //Snapshots through, it's the canonical name
-                if s.startswith('//Snapshots'):
-                    filtered_ar.append(ln)
-                continue
-            continue
+                filtered_ar.append(ln)  # always preserve the terminator line
+            continue  # skip orphan content (terminator already appended above)
         filtered_ar.append(ln)
     ar = filtered_ar
 
     # ── Re-indent orphaned snapshots for nesting under /+Arch Linux ──
     if sn:
+        if not ar:
+            warn("Snapshots section found but no /+Arch Linux entry — snapshots may be unnested in output.")
         base_indent = _detect_indent(sn, 5)
         reindented = []
         for ln in sn:
@@ -426,10 +530,6 @@ def clean_limine():
         ar = ar[:insert_at] + ["\n"] + reindented + ["\n"] + ar[insert_at:]
 
     # ── Post-process `oe`: strip orphaned kernel-entry fragments ──
-    orphan_markers = [
-        "### This kernel entry", "protocol: linux",
-        "kernel-id=", "Kernel version:",
-    ]
     oe_clean = []
     in_orphan = False
     for ln in oe:
@@ -457,65 +557,47 @@ def clean_limine():
         print(f"    Lines before: {len(lines)}  after: {len(out_lines)}")
         return
 
-    safe_write(conf, "".join(out_lines), desc="limine.conf (scrubbed)")
-
-    # ── Update default_entry ──────────────────────────────────────
-    entry_num = 0
+    # ── Update default_entry in-memory ───────────────────────────
+    # Count entries and locate Arch Linux — done once here, not re-derived in validator.
+    entry_count = 0
     arch_no = None
     for ln in out_lines:
         if ln.strip().startswith("/+"):
-            entry_num += 1
-            if "/+Arch Linux" in ln:
-                arch_no = entry_num
+            entry_count += 1
+            if ARCH_ENTRY in ln:
+                arch_no = entry_count
 
+    final_content = "".join(out_lines)
     if arch_no is not None:
-        cur = conf.read_text()
-        newc = re.sub(r"^default_entry:\s*\d+.*", f"default_entry: {arch_no}", cur, flags=re.MULTILINE)
-        if newc != cur:
-            safe_write(conf, newc, desc="default_entry -> Arch Linux")
+        updated = re.sub(
+            r"^default_entry:\s*\d+.*", f"default_entry: {arch_no}",
+            final_content, flags=re.MULTILINE,
+        )
+        if updated != final_content:
+            final_content = updated
         else:
             ok("default_entry already points to Arch Linux.")
-    """ else: warn, don't fail — dual-boot user may have set it deliberately """
-    if arch_no is None:
+    else:
         warn("Could not determine Arch Linux entry number — default_entry left as-is.")
 
-    # ── Validate ──────────────────────────────────────────────────
-    _validate_limine(conf, out_lines)
-
-    # ── Regenerate ────────────────────────────────────────────────
-    run(["limine-mkinitcpio"], optional=True)
-    run(["limine-update"], optional=True)
-    ok("Boot menu regenerated.")
-
-
-def _validate_limine(conf: Path, final_lines: list[str] | None = None):
-    """Non-fatal sanity checks on the written limine.conf."""
-    if not conf.exists():
-        err("limine.conf missing after write!")
+    # ── Validate before write ─────────────────────────────────────
+    if not _validate_limine(final_content, entry_count):
+        err("limine.conf NOT written — validation blocked the write.")
         return
-    content = conf.read_text()
 
-    if "/+Arch Linux" not in content:
-        warn("  LIMINE: /+Arch Linux entry not found — is this a pre-identity-restore run?")
-    elif "/+CachyOS" in content:
-        warn("  LIMINE: stale /+CachyOS entry still present.")
+    # ── Single atomic write ───────────────────────────────────────
+    safe_write(conf, final_content, desc="limine.conf (scrubbed + default_entry)")
 
-    m = re.search(r"^default_entry:\s*(\d+)", content, re.MULTILINE)
-    if not m:
-        warn("  LIMINE: default_entry not found — using Limine's internal default.")
-    elif final_lines:
-        entry_list = [ln for ln in final_lines if ln.strip().startswith("/+")]
-        entry_count = len(entry_list)
-        entry_no = int(m.group(1))
-        if entry_no > entry_count and entry_count > 0:
-            warn(f"  LIMINE: default_entry ({entry_no}) > entry count ({entry_count}) — likely dual-boot.")
-        elif entry_no <= entry_count and entry_count > 0:
-            ok(f"  LIMINE: default_entry = {entry_no} (valid among {entry_count} entries).")
+    # ── Regenerate (skipped if already done in the rename branch) ─
+    if not _regenerated:
+        run(["limine-mkinitcpio"], optional=True)
+        run(["limine-update"], optional=True)
+    ok("Boot menu regenerated.")
 
 
 # ── 5. Plymouth ──────────────────────────────────────────────────────
 
-def restore_plymouth():
+def restore_plymouth(backup_dir: Path):
     print("\n── 5. Plymouth ──")
     if not shutil.which("plymouth-set-default-theme"):
         info("plymouth not installed, skipping.")
@@ -530,18 +612,21 @@ def restore_plymouth():
     except Exception:
         out = ""
 
-    if out == "bgrt":
-        ok("Plymouth already set to bgrt.")
+    if out == PLYMOUTH_THEME:
+        ok(f"Plymouth already set to {PLYMOUTH_THEME}.")
         return
 
     if DRY_RUN:
-        info("Would run: plymouth-set-default-theme bgrt && mkinitcpio -P")
+        info(f"Would run: plymouth-set-default-theme {PLYMOUTH_THEME} && mkinitcpio -P")
         return
 
-    backup_file(Path("/etc/plymouth/plymouthd.conf"))
-    run(["plymouth-set-default-theme", "bgrt"])
+    backup_file(Path("/etc/plymouth/plymouthd.conf"), backup_dir)
+    result = run(["plymouth-set-default-theme", PLYMOUTH_THEME], check=False)
+    if result and result.returncode != 0:
+        err(f"Failed to set Plymouth theme to {PLYMOUTH_THEME}")
+        return
     run(["mkinitcpio", "-P"])
-    ok("Plymouth theme reset to bgrt.")
+    ok(f"Plymouth theme set to {PLYMOUTH_THEME}.")
 
 
 # ── 6. Verify ────────────────────────────────────────────────────────
@@ -568,11 +653,10 @@ def verify():
         print("  HOOK: none masked (all clean, no branding hooks found)")
 
     # Limine
-    conf = Path("/boot/limine.conf")
-    if conf.exists():
-        content = conf.read_text()
-        if "/+CachyOS" in content:
-            warn("  LIMINE: stale /+CachyOS entry still present!")
+    if LIMINE_CONF.exists():
+        content = LIMINE_CONF.read_text()
+        if CACHYOS_ENTRY in content:
+            warn(f"  LIMINE: stale {CACHYOS_ENTRY!r} entry still present!")
         else:
             ok("  LIMINE: no stale CachyOS entries.")
         if "//Snapshots" in content:
@@ -601,39 +685,83 @@ def verify():
 # ── Main ─────────────────────────────────────────────────────────────
 
 def main():
-    global DRY_RUN, VERBOSE
+    global DRY_RUN, VERBOSE, SKIP_SECTIONS, PLYMOUTH_THEME
 
-    if "--version" in sys.argv or "-V" in sys.argv:
-        print(f"arch-fortify.py v{__version__}")
+    parser = argparse.ArgumentParser(
+        description="Persistent CachyOS de-branding for Arch Linux",
+        epilog="Examples:\n"
+               "  sudo arch-fortify.py              # Apply de-branding\n"
+               "  sudo arch-fortify.py --dry        # Preview changes\n"
+               "  sudo arch-fortify.py --restore    # Restore latest backup\n"
+               "  sudo arch-fortify.py --skip limine  # Skip Limine section\n",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--version", "-V", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("--dry", action="store_true", help="Preview changes without writing")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Stream command output")
+    parser.add_argument(
+        "--restore", nargs="?", const=None, metavar="TIMESTAMP",
+        help="Restore backup (latest if no timestamp given)"
+    )
+    parser.add_argument(
+        "--list-backups", action="store_true",
+        help="List available backups"
+    )
+    parser.add_argument(
+        "--skip", metavar="SECTIONS",
+        help="Skip comma-separated sections (hooks,identity,gdm,limine,plymouth)"
+    )
+    parser.add_argument(
+        "--plymouth-theme", default="bgrt", metavar="THEME",
+        help="Plymouth theme to restore (default: bgrt)"
+    )
+
+    args = parser.parse_args()
+
+    if args.list_backups:
+        list_backups()
         return 0
 
-    if "--restore" in sys.argv:
-        ts = None
-        for i, a in enumerate(sys.argv):
-            if a == "--restore" and i + 1 < len(sys.argv) and not sys.argv[i + 1].startswith("-"):
-                ts = sys.argv[i + 1]
-        restore_backup(ts)
+    if args.restore is not None:
+        if not os.geteuid() == 0:
+            fail("Must run as root (sudo).")
+        acquire_lock()
+        try:
+            restore_backup(args.restore)
+        finally:
+            release_lock()
         return 0 if not HAD_ERRORS else 1
 
-    if "--dry" in sys.argv or "--dry-run" in sys.argv or "-n" in sys.argv:
-        DRY_RUN = True
-        print("═══ DRY RUN — no changes will be written ═══\n")
+    DRY_RUN = args.dry
+    VERBOSE = args.verbose
+    PLYMOUTH_THEME = args.plymouth_theme
 
-    if "-v" in sys.argv or "--verbose" in sys.argv:
-        VERBOSE = True
+    if args.skip:
+        SKIP_SECTIONS = set(s.strip().lower() for s in args.skip.split(","))
+
+    if DRY_RUN:
+        print("═══ DRY RUN — no changes will be written ═══\n")
 
     if os.geteuid() != 0:
         fail("Must run as root (sudo).")
 
-    acquire_lock()
+    fd = acquire_lock()
     try:
-        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        backup_dir = BACKUP_ROOT / f"{datetime.now():%Y%m%d_%H%M%S}"
 
-        mask_branding_hooks()
-        restore_identity()
-        hide_gdm_logo()
-        clean_limine()
-        restore_plymouth()
+        if not DRY_RUN:
+            backup_dir.mkdir(parents=True, exist_ok=True)
+
+        if "hooks" not in SKIP_SECTIONS:
+            mask_branding_hooks()
+        if "identity" not in SKIP_SECTIONS:
+            restore_identity(backup_dir)
+        if "gdm" not in SKIP_SECTIONS:
+            hide_gdm_logo(backup_dir)
+        if "limine" not in SKIP_SECTIONS:
+            clean_limine(backup_dir)
+        if "plymouth" not in SKIP_SECTIONS:
+            restore_plymouth(backup_dir)
         verify()
 
         print()
