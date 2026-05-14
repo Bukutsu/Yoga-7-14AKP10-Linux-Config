@@ -8,30 +8,40 @@ Getting the best audio out of your Lenovo Yoga 7 (and other modern Lenovo laptop
 
 ## 1. The Kernel Quirk (Fixing "Tinny" Sound)
 
-By default, the Linux kernel often misidentifies the ALC3306 chip and fails to route audio to the bottom bass speakers.
+⚠️ **IMPORTANT:** For Lenovo Yoga 7 2-in-1 14AKP10, see [KERNEL_QUIRK_FIX.md](KERNEL_QUIRK_FIX.md) for the correct fix. This section is outdated.
 
-To fix this:
+By default, the Linux kernel often misidentifies the ALC287/ALC3306 chip and fails to route audio to the bottom bass speakers. This is a **BIOS firmware issue** where Pin 0x17 (bass speakers) is incorrectly marked as unconnected.
 
-1. Identify your audio card index by running `aplay -l`. Note if your `ALC287/ALC3306 Analog` device is `card 0` or `card 1`.
-2. Create a modprobe configuration file to apply the specific Lenovo Yoga 9 bass pin fix to your card.
+### For Yoga 7 2-in-1 14AKP10 (Device SSID 0x17aa:391c)
 
-Create `/etc/modprobe.d/alc3306-yoga-fix.conf`:
-```bash
-sudo nano /etc/modprobe.d/alc3306-yoga-fix.conf
-```
+See **[KERNEL_QUIRK_FIX.md](KERNEL_QUIRK_FIX.md)** for:
+- The actual kernel patch that fixes your device
+- When it will be available (Linux 6.14+)
+- How to apply it now (kernel upgrade or modprobe workaround)
 
-Add the following line (if your ALC chip is **Card 1**, which is common when HDMI audio is Card 0):
-```conf
-options snd-hda-intel model=(null),alc287-yoga9-bass-spk-pin
-```
-*(If your ALC chip is **Card 0**, remove the `(null),` prefix).*
+### For Other Yoga/Thinkpad Models
 
-3. Rebuild your initramfs and reboot:
-```bash
-sudo mkinitcpio -P
-```
+If you have a different model, the fix process varies:
 
-Upon rebooting, your woofers will be active, providing a significantly fuller sound base.
+1. Identify your audio card and codec SSID:
+   ```bash
+   aplay -l                              # Check card number
+   cat /proc/asound/card1/codec* | grep "Subsystem Id"  # Your SSID
+   ```
+
+2. Search kernel source for your device SSID:
+   ```bash
+   grep -r "0x391c" /usr/src/linux*     # Replace 391c with your SSID
+   ```
+
+3. If your device is in the kernel:
+   - Upgrade to a kernel version that includes your quirk
+   - No manual modprobe needed (automatic)
+
+4. If your device is NOT in the kernel:
+   - Submit a bug report to kernel ALSA maintainers
+   - Or apply a workaround modprobe temporarily
+   - See [KERNEL_QUIRK_FIX.md](KERNEL_QUIRK_FIX.md) for modprobe option
 
 ---
 
