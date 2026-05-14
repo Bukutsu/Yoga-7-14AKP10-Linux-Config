@@ -7,6 +7,19 @@ and this project uses dates (YYYY-MM-DD) for tracking real-world updates.
 
 ## [Unreleased]
 
+## [2026-05-15]
+
+### Added
+- **Yoga_7_MaxVolume EasyEffects preset** (`configs/audio/easyeffects_presets/Yoga_7_MaxVolume.json`)
+  - Aggressive volume boost variant for situations where headroom matters more than distortion
+- **Audio research notes** (`docs/AUDIO_RESEARCH.md`)
+  - Hardware analysis of ALC3306 speaker system
+  - Linux driver quirks and tuning methodology
+
+### Fixed
+- `arch-fortify.py` now has the executable bit set (`chmod +x`)
+- `.ruff_cache/` added to `.gitignore`
+
 ## [2026-05-14]
 
 ### Added

@@ -25,6 +25,7 @@ sudo cp -r configs/system/* /etc/
 
 - [INSTALL_GUIDE.md](docs/INSTALL_GUIDE.md) — Fresh installation
 - [AUDIO_TUNING.md](docs/AUDIO_TUNING.md) — Speaker and EasyEffects setup
+- [AUDIO_RESEARCH.md](docs/AUDIO_RESEARCH.md) — Hardware analysis and tuning research
 - [BIOPASS_PAM_SETUP.md](docs/BIOPASS_PAM_SETUP.md) — Face authentication
 - [DEBRANDING.md](docs/DEBRANDING.md) — Remove CachyOS branding
 - [LIMINE_THEMING.md](docs/LIMINE_THEMING.md) — Bootloader customization
