@@ -531,29 +531,22 @@ def clean_limine(backup_dir: Path):
     # Collapse multiple blank lines into one
     content = re.sub(r"\n{3,}", "\n\n", content)
 
-    # ── Phase A: Ensure /+Arch Linux entry exists ────────────────
+    # ── Phase A: Boot entry regeneration ──────────────────────────
+    # If CachyOS boot entry exists, run tools to capture snapshots and
+    # regenerate a proper Arch Linux entry (tools read os-release which
+    # was already restored in step 2). The state machine below strips
+    # any stale /+CachyOS that remains.
     _regenerated = False
-    if ARCH_ENTRY not in content and CACHYOS_ENTRY in content:
-        info(f"No {ARCH_ENTRY!r} entry found; {CACHYOS_ENTRY!r} present. Renaming...")
+    if CACHYOS_ENTRY in content:
+        info(f"{CACHYOS_ENTRY!r} entry found. Snapshot sync + boot regeneration...")
         if not DRY_RUN:
+            run(["limine-snapper-sync"], optional=True)
             run(["limine-mkinitcpio"], optional=True)
             run(["limine-update"], optional=True)
-            _regenerated = True
             content = conf.read_text()
-        content = content.replace(CACHYOS_ENTRY, ARCH_ENTRY)
-        content = re.sub(
-            r"^comment: CachyOS$", "comment: Arch Linux", content, flags=re.MULTILINE
-        )
-        safe_write(conf, content, desc=f"renamed {CACHYOS_ENTRY!r} → {ARCH_ENTRY!r}")
-        ok(f"Entry renamed to {ARCH_ENTRY!r}.")
-    elif CACHYOS_ENTRY in content:
-        # Already has /+Arch Linux but stale CachyOS also present
-        warn(
-            f"Both {CACHYOS_ENTRY!r} and {ARCH_ENTRY!r} found — stale entry will be removed."
-        )
+            content = re.sub(r"\n{3,}", "\n\n", content)
+            _regenerated = True
 
-    # Use the in-memory content (includes theme strip and blank-line collapse)
-    # so dry-run and non-rename paths see the same data the state machine will process.
     lines = content.splitlines(keepends=True)
 
     # ── Multi-scenario state machine ──────────────────────────────
