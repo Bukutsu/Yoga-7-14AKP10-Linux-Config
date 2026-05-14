@@ -34,11 +34,11 @@ if sys.version_info < (3, 9):
     sys.exit(1)
 
 BACKUP_ROOT = Path("/var/lib/arch-fortify/backups")
-LOCK_FILE   = Path("/var/lib/arch-fortify/lock")
+LOCK_FILE = Path("/var/lib/arch-fortify/lock")
 
-LIMINE_CONF   = Path("/boot/limine.conf")
+LIMINE_CONF = Path("/boot/limine.conf")
 CACHYOS_ENTRY = "/+CachyOS"
-ARCH_ENTRY    = "/+Arch Linux"
+ARCH_ENTRY = "/+Arch Linux"
 
 DRY_RUN = False
 VERBOSE = False
@@ -50,9 +50,10 @@ _lock_fd: int | None = None
 MAX_BACKUPS = 10
 AUDIT_LOG = Path("/var/lib/arch-fortify/audit.log")
 
+
 def _backup_filename(path: Path) -> str:
     """Generate a safe, unique backup filename from a full path."""
-    return str(path).lstrip('/').replace('/', '_')
+    return str(path).lstrip("/").replace("/", "_")
 
 
 def _handle_signal(signum, frame):
@@ -97,16 +98,34 @@ def audit(entry: str):
 
 # ── Utilities ─────────────────────────────────────────────────────────
 
+
 def _color(code: str, text: str) -> str:
-    if hasattr(sys.stdout, 'isatty') and sys.stdout.isatty():
+    if hasattr(sys.stdout, "isatty") and sys.stdout.isatty():
         return f"{code}{text}\033[0m"
     return text
 
-def info(msg):  print(f"  {_color('\033[34;1m', 'INFO')}  {msg}")
-def ok(msg):    print(f"  {_color('\033[32;1m', ' OK ')}  {msg}")
-def warn(msg):  print(f"  {_color('\033[33;1m', 'WARN')}  {msg}")
-def fail(msg):  print(f"  {_color('\033[31;1m', 'FAIL')}  {msg}"); sys.exit(1)
-def err(msg):   global HAD_ERRORS; HAD_ERRORS = True; print(f"  {_color('\033[31;1m', 'ERR ')}  {msg}")
+
+def info(msg):
+    print(f"  {_color('\033[34;1m', 'INFO')}  {msg}")
+
+
+def ok(msg):
+    print(f"  {_color('\033[32;1m', ' OK ')}  {msg}")
+
+
+def warn(msg):
+    print(f"  {_color('\033[33;1m', 'WARN')}  {msg}")
+
+
+def fail(msg):
+    print(f"  {_color('\033[31;1m', 'FAIL')}  {msg}")
+    sys.exit(1)
+
+
+def err(msg):
+    global HAD_ERRORS
+    HAD_ERRORS = True
+    print(f"  {_color('\033[31;1m', 'ERR ')}  {msg}")
 
 
 def acquire_lock():
@@ -194,6 +213,7 @@ def safe_write(path: Path, content: str, desc: str = ""):
 
 
 # ── Backup / Restore ──────────────────────────────────────────────────
+
 
 def backup_file(path: Path, backup_dir: Path) -> Path | None:
     """Copy *path* into the backup directory and record its original path in manifest.json.
@@ -284,6 +304,7 @@ def restore_backup(timestamp: str | None = None):
 
 # ── 1. Identity Guard ─────────────────────────────────────────────────
 
+
 def mask_branding_hooks():
     print("\n── 1. Identity Guard ──")
     hook_dir = Path("/usr/share/libalpm/hooks/")
@@ -303,11 +324,20 @@ def mask_branding_hooks():
             continue
 
         # Detect: hooks that target identity packages or execute branding operations
-        targets_identity = any(pkg in content for pkg in [
-            "os-release", "lsb-release", "issue", "filesystem", "cachyos-branding",
-        ])
+        targets_identity = any(
+            pkg in content
+            for pkg in [
+                "os-release",
+                "lsb-release",
+                "issue",
+                "filesystem",
+                "cachyos-branding",
+            ]
+        )
         # Also check for hooks that explicitly run branding commands
-        runs_branding = bool(re.search(r'Exec\s*=.*(?:branding|cachyos)', content, re.IGNORECASE))
+        runs_branding = bool(
+            re.search(r"Exec\s*=.*(?:branding|cachyos)", content, re.IGNORECASE)
+        )
 
         if not (targets_identity or runs_branding):
             continue
@@ -329,6 +359,7 @@ def mask_branding_hooks():
 
 
 # ── 2. Identity Restoration ──────────────────────────────────────────
+
 
 def restore_identity(backup_dir: Path):
     print("\n── 2. Identity Restoration ──")
@@ -357,7 +388,9 @@ def restore_identity(backup_dir: Path):
         # Re-create from the factory default
         factory = Path("/usr/share/factory/etc/issue")
         if factory.exists():
-            safe_write(etc_issue, factory.read_text(), desc="restored from factory default")
+            safe_write(
+                etc_issue, factory.read_text(), desc="restored from factory default"
+            )
 
     # Same for the factory copy
     factory_issue = Path("/usr/share/factory/etc/issue")
@@ -366,7 +399,9 @@ def restore_identity(backup_dir: Path):
         cleaned = content.replace("CachyOS Linux", "\\S{PRETTY_NAME}")
         cleaned = cleaned.replace("CachyOS", "\\S{PRETTY_NAME}")
         if cleaned != content:
-            safe_write(factory_issue, cleaned, desc="purged CachyOS from factory /etc/issue")
+            safe_write(
+                factory_issue, cleaned, desc="purged CachyOS from factory /etc/issue"
+            )
 
     # Verify
     if not DRY_RUN:
@@ -375,29 +410,53 @@ def restore_identity(backup_dir: Path):
                 ok(f"/etc/os-release says: {line}")
 
 
-# ── 3. GDM Logo ──────────────────────────────────────────────────────
+# ── 3. Display Managers ─────────────────────────────────────────────
 
-def hide_gdm_logo(backup_dir: Path):
-    print("\n── 3. GDM Logo ──")
 
-    if not shutil.which("glib-compile-schemas"):
-        warn("glib-compile-schemas not found, skipping GDM step.")
+def fix_display_managers(backup_dir: Path):
+    print("\n── 3. Display Managers ──")
+
+    has_gdm = shutil.which("gdm")
+    has_sddm = shutil.which("sddm")
+
+    if not has_gdm and not has_sddm:
+        info("No supported display manager detected (GDM or SDDM).")
         return
 
-    override = Path("/usr/share/glib-2.0/schemas/zzzz_arch-fix.gschema.override")
-    content = "[org.gnome.login-screen]\nlogo=''\n"
+    # ── GDM ──
+    if has_gdm:
+        if not shutil.which("glib-compile-schemas"):
+            warn("glib-compile-schemas not found, skipping GDM step.")
+        else:
+            override = Path(
+                "/usr/share/glib-2.0/schemas/zzzz_arch-fix.gschema.override"
+            )
+            content = "[org.gnome.login-screen]\nlogo=''\n"
+            if override.exists() and override.read_text() == content:
+                ok("GDM schema override already correct.")
+            else:
+                backup_file(override, backup_dir)
+                safe_write(override, content, desc="GDM logo schema override")
+                run(["glib-compile-schemas", "/usr/share/glib-2.0/schemas/"])
+                ok("GDM schema override installed.")
 
-    if override.exists() and override.read_text() == content:
-        ok("GDM schema override already correct.")
-        return
+    # ── SDDM ──
+    if has_sddm:
+        sddm_conf_d = Path("/etc/sddm.conf.d")
+        sddm_conf_d.mkdir(parents=True, exist_ok=True)
+        sddm_override = sddm_conf_d / "01-arch-fortify.conf"
+        content = "[Theme]\nCurrent=elarun\n"
 
-    backup_file(override, backup_dir)
-    safe_write(override, content, desc="GDM logo schema override")
-    run(["glib-compile-schemas", "/usr/share/glib-2.0/schemas/"])
-    ok("GDM schema override installed.")
+        if sddm_override.exists() and sddm_override.read_text() == content:
+            ok("SDDM theme override already correct (elarun).")
+        else:
+            backup_file(sddm_override, backup_dir)
+            safe_write(sddm_override, content, desc="SDDM theme reset to stock elarun")
+            ok("SDDM theme override installed.")
 
 
 # ── 4. Limine ────────────────────────────────────────────────────────
+
 
 def _detect_indent(lines: list[str], default: int = 5) -> int:
     for ln in lines:
@@ -415,20 +474,28 @@ def _validate_limine(final_content: str, entry_count: int) -> bool:
 
     if ARCH_ENTRY not in final_content:
         if CACHYOS_ENTRY in final_content:
-            warn(f"  LIMINE: {CACHYOS_ENTRY!r} present but no {ARCH_ENTRY!r} — run identity step first.")
+            warn(
+                f"  LIMINE: {CACHYOS_ENTRY!r} present but no {ARCH_ENTRY!r} — run identity step first."
+            )
         else:
-            err(f"  LIMINE: No {ARCH_ENTRY!r} entry in composed config — refusing to write (would be unbootable).")
+            err(
+                f"  LIMINE: No {ARCH_ENTRY!r} entry in composed config — refusing to write (would be unbootable)."
+            )
             ok_to_write = False
     elif CACHYOS_ENTRY in final_content:
         warn(f"  LIMINE: stale {CACHYOS_ENTRY!r} still present after scrubbing.")
 
     m = re.search(r"^default_entry:\s*(\d+)", final_content, re.MULTILINE)
     if not m:
-        warn("  LIMINE: default_entry not found — Limine will use its internal default.")
+        warn(
+            "  LIMINE: default_entry not found — Limine will use its internal default."
+        )
     elif entry_count > 0:
         entry_no = int(m.group(1))
         if entry_no > entry_count:
-            warn(f"  LIMINE: default_entry ({entry_no}) > entry count ({entry_count}) — check dual-boot setup.")
+            warn(
+                f"  LIMINE: default_entry ({entry_no}) > entry count ({entry_count}) — check dual-boot setup."
+            )
         else:
             ok(f"  LIMINE: default_entry = {entry_no} (valid, {entry_count} entries).")
 
@@ -454,15 +521,15 @@ def clean_limine(backup_dir: Path):
     # Match the comment line plus all consecutive non-blank lines that follow,
     # regardless of field order or whether the wallpaper line is present.
     stripped = re.sub(
-        r'^# CachyOS Limine theme[^\n]*\n(?:[^\n]+\n)*',
-        '',
+        r"^# CachyOS Limine theme[^\n]*\n(?:[^\n]+\n)*",
+        "",
         content,
         flags=re.MULTILINE,
     )
     if stripped != content:
         content = stripped
     # Collapse multiple blank lines into one
-    content = re.sub(r'\n{3,}', '\n\n', content)
+    content = re.sub(r"\n{3,}", "\n\n", content)
 
     # ── Phase A: Ensure /+Arch Linux entry exists ────────────────
     _regenerated = False
@@ -474,12 +541,16 @@ def clean_limine(backup_dir: Path):
             _regenerated = True
             content = conf.read_text()
         content = content.replace(CACHYOS_ENTRY, ARCH_ENTRY)
-        content = re.sub(r"^comment: CachyOS$", "comment: Arch Linux", content, flags=re.MULTILINE)
+        content = re.sub(
+            r"^comment: CachyOS$", "comment: Arch Linux", content, flags=re.MULTILINE
+        )
         safe_write(conf, content, desc=f"renamed {CACHYOS_ENTRY!r} → {ARCH_ENTRY!r}")
         ok(f"Entry renamed to {ARCH_ENTRY!r}.")
     elif CACHYOS_ENTRY in content:
         # Already has /+Arch Linux but stale CachyOS also present
-        warn(f"Both {CACHYOS_ENTRY!r} and {ARCH_ENTRY!r} found — stale entry will be removed.")
+        warn(
+            f"Both {CACHYOS_ENTRY!r} and {ARCH_ENTRY!r} found — stale entry will be removed."
+        )
 
     # Use the in-memory content (includes theme strip and blank-line collapse)
     # so dry-run and non-rename paths see the same data the state machine will process.
@@ -498,7 +569,7 @@ def clean_limine(backup_dir: Path):
         while hs and not hs[-1].strip():
             hs.pop()
         # Only pop a genuine `comment: …` key line, not arbitrary lines containing "comment:"
-        if hs and re.match(r'\s*comment:', hs[-1]):
+        if hs and re.match(r"\s*comment:", hs[-1]):
             hs.pop()
         while hs and not hs[-1].strip():
             hs.pop()
@@ -519,13 +590,13 @@ def clean_limine(backup_dir: Path):
             state = "skip_cachyos"
             continue
         elif state in ("arch_linux", "other") and s.startswith("/+"):
-            state = "other"           # dual-boot entry like /+Windows
+            state = "other"  # dual-boot entry like /+Windows
         elif state == "snapshots" and s.startswith("/+"):
-            state = "other"           # exit snapshots on the next top-level entry
+            state = "other"  # exit snapshots on the next top-level entry
         elif state in ("header", "skip_cachyos") and s.startswith("//Snapshots"):
             state = "snapshots"
         elif state == "skip_cachyos" and s.startswith("/+"):
-            state = "arch_linux"      # orphan-recovery: first /+ after CachyOS block
+            state = "arch_linux"  # orphan-recovery: first /+ after CachyOS block
 
         # ── Append ────────────────────────────────────────────────
         if state == "header":
@@ -556,11 +627,16 @@ def clean_limine(backup_dir: Path):
     skip_dup = False
     for ln in ar:
         s = ln.strip()
-        if s == '//Arch Linux':
+        if s == "//Arch Linux":
             skip_dup = True
             continue
         if skip_dup:
-            if s.startswith('//Snapshots') or s.startswith('/+') or s.startswith('//EFI') or s.startswith('/EFI'):
+            if (
+                s.startswith("//Snapshots")
+                or s.startswith("/+")
+                or s.startswith("//EFI")
+                or s.startswith("/EFI")
+            ):
                 skip_dup = False
                 filtered_ar.append(ln)  # always preserve the terminator line
             continue  # skip orphan content (terminator already appended above)
@@ -570,7 +646,9 @@ def clean_limine(backup_dir: Path):
     # ── Re-indent orphaned snapshots for nesting under /+Arch Linux ──
     if sn:
         if not ar:
-            warn("Snapshots section found but no /+Arch Linux entry — snapshots may be unnested in output.")
+            warn(
+                "Snapshots section found but no /+Arch Linux entry — snapshots may be unnested in output."
+            )
         base_indent = _detect_indent(sn, 5)
         reindented = []
         for ln in sn:
@@ -599,12 +677,18 @@ def clean_limine(backup_dir: Path):
     for ln in oe:
         s = ln.strip()
         # Start of an orphaned kernel fragment (indented, auto-gen comment)
-        if (ln.startswith(" ") and "### This kernel entry" in s) or \
-           (ln.startswith(" ") and "protocol: linux" in s):
+        if (ln.startswith(" ") and "### This kernel entry" in s) or (
+            ln.startswith(" ") and "protocol: linux" in s
+        ):
             in_orphan = True
         if in_orphan:
             # End: blank line or next section header
-            if not s or s.startswith("/+") or s.startswith("/EFI") or s.startswith("//EFI"):
+            if (
+                not s
+                or s.startswith("/+")
+                or s.startswith("/EFI")
+                or s.startswith("//EFI")
+            ):
                 in_orphan = False
                 if s:
                     oe_clean.append(ln)
@@ -634,8 +718,10 @@ def clean_limine(backup_dir: Path):
     final_content = "".join(out_lines)
     if arch_no is not None:
         updated = re.sub(
-            r"^default_entry:\s*\d+.*", f"default_entry: {arch_no}",
-            final_content, flags=re.MULTILINE,
+            r"^default_entry:\s*\d+.*",
+            f"default_entry: {arch_no}",
+            final_content,
+            flags=re.MULTILINE,
         )
         if updated != final_content:
             final_content = updated
@@ -661,6 +747,7 @@ def clean_limine(backup_dir: Path):
 
 # ── 5. Plymouth ──────────────────────────────────────────────────────
 
+
 def restore_plymouth(backup_dir: Path):
     print("\n── 5. Plymouth ──")
     if not shutil.which("plymouth-set-default-theme"):
@@ -671,7 +758,9 @@ def restore_plymouth(backup_dir: Path):
     try:
         out = subprocess.run(
             ["plymouth-set-default-theme"],
-            capture_output=True, text=True, check=False,
+            capture_output=True,
+            text=True,
+            check=False,
         ).stdout.strip()
     except Exception:
         out = ""
@@ -694,6 +783,7 @@ def restore_plymouth(backup_dir: Path):
 
 
 # ── 6. Verify ────────────────────────────────────────────────────────
+
 
 def verify():
     print("\n── 6. Verification ──")
@@ -741,6 +831,15 @@ def verify():
     if not cachyos_found:
         ok("  No CachyOS branding found in identity files.")
 
+    # Display managers
+    gdm_override = Path("/usr/share/glib-2.0/schemas/zzzz_arch-fix.gschema.override")
+    if gdm_override.exists():
+        ok("  GDM: schema override in place (logo cleared).")
+
+    sddm_override = Path("/etc/sddm.conf.d/01-arch-fortify.conf")
+    if sddm_override.exists():
+        ok("  SDDM: theme override in place (elarun).")
+
     # Report any accumulated errors
     if HAD_ERRORS:
         warn("Some steps had errors — review the output above.")
@@ -748,36 +847,48 @@ def verify():
 
 # ── Main ─────────────────────────────────────────────────────────────
 
+
 def main():
     global DRY_RUN, VERBOSE, SKIP_SECTIONS, PLYMOUTH_THEME
 
     parser = argparse.ArgumentParser(
         description="Persistent CachyOS de-branding for Arch Linux",
         epilog="Examples:\n"
-               "  sudo arch-fortify.py              # Apply de-branding\n"
-               "  sudo arch-fortify.py --dry        # Preview changes\n"
-               "  sudo arch-fortify.py --restore    # Restore latest backup\n"
-               "  sudo arch-fortify.py --skip limine  # Skip Limine section\n",
+        "  sudo arch-fortify.py              # Apply de-branding\n"
+        "  sudo arch-fortify.py --dry        # Preview changes\n"
+        "  sudo arch-fortify.py --restore    # Restore latest backup\n"
+        "  sudo arch-fortify.py --skip limine  # Skip Limine section\n",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--version", "-V", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument("--dry", action="store_true", help="Preview changes without writing")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Stream command output")
     parser.add_argument(
-        "--restore", nargs="?", const=None, metavar="TIMESTAMP",
-        help="Restore backup (latest if no timestamp given)"
+        "--version", "-V", action="version", version=f"%(prog)s {__version__}"
     )
     parser.add_argument(
-        "--list-backups", action="store_true",
-        help="List available backups"
+        "--dry", action="store_true", help="Preview changes without writing"
     )
     parser.add_argument(
-        "--skip", metavar="SECTIONS",
-        help="Skip comma-separated sections (hooks,identity,gdm,limine,plymouth)"
+        "-v", "--verbose", action="store_true", help="Stream command output"
     )
     parser.add_argument(
-        "--plymouth-theme", default="bgrt", metavar="THEME",
-        help="Plymouth theme to restore (default: bgrt)"
+        "--restore",
+        nargs="?",
+        const=None,
+        metavar="TIMESTAMP",
+        help="Restore backup (latest if no timestamp given)",
+    )
+    parser.add_argument(
+        "--list-backups", action="store_true", help="List available backups"
+    )
+    parser.add_argument(
+        "--skip",
+        metavar="SECTIONS",
+        help="Skip comma-separated sections (hooks,identity,display-managers,limine,plymouth); 'gdm' accepted as alias",
+    )
+    parser.add_argument(
+        "--plymouth-theme",
+        default="bgrt",
+        metavar="THEME",
+        help="Plymouth theme to restore (default: bgrt)",
     )
 
     args = parser.parse_args()
@@ -802,7 +913,11 @@ def main():
     PLYMOUTH_THEME = args.plymouth_theme
 
     if args.skip:
-        SKIP_SECTIONS = set(s.strip().lower() for s in args.skip.split(","))
+        sections = set(s.strip().lower() for s in args.skip.split(","))
+        if "gdm" in sections:
+            sections.discard("gdm")
+            sections.add("display-managers")
+        SKIP_SECTIONS = sections
 
     if DRY_RUN:
         print("═══ DRY RUN — no changes will be written ═══\n")
@@ -823,8 +938,8 @@ def main():
             mask_branding_hooks()
         if "identity" not in SKIP_SECTIONS:
             restore_identity(backup_dir)
-        if "gdm" not in SKIP_SECTIONS:
-            hide_gdm_logo(backup_dir)
+        if "display-managers" not in SKIP_SECTIONS:
+            fix_display_managers(backup_dir)
         if "limine" not in SKIP_SECTIONS:
             clean_limine(backup_dir)
         if "plymouth" not in SKIP_SECTIONS:
