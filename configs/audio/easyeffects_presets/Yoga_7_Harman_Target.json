@@ -1,12 +1,12 @@
 {
   "output": {
     "bass_enhancer#0": {
-      "amount": 10.0,
+      "amount": 8.0,
       "blend": 0.0,
       "bypass": false,
       "floor": 40.0,
       "floor-active": true,
-      "harmonics": 10.0,
+      "harmonics": 8.0,
       "input-gain": 0.0,
       "output-gain": 0.0,
       "scope": 100.0
@@ -40,7 +40,7 @@
     "equalizer#0": {
       "balance": 0.0,
       "bypass": false,
-      "input-gain": 2.0,
+      "input-gain": 1.0,
       "left": {
         "band0": {
           "frequency": 105.0,
@@ -87,7 +87,7 @@
       },
       "mode": "IIR",
       "num-bands": 6,
-      "output-gain": 2.0,
+      "output-gain": 1.0,
       "right": {
         "band0": {
           "frequency": 105.0,
@@ -134,19 +134,19 @@
       }
     },
     "limiter#0": {
-      "alr": false,
-      "attack": 2.0,
+      "alr": true,
+      "attack": 1.5,
       "bypass": false,
       "dithering": "None",
       "gain-boost": false,
       "input-gain": 0.0,
-      "lookahead": 2.0,
+      "lookahead": 3.0,
       "mode": "Herm Wide",
       "output-gain": 0.0,
-      "oversampling": "None",
-      "release": 5.0,
+      "oversampling": "4x",
+      "release": 80.0,
       "stereo-link": 100.0,
-      "threshold": 0.0
+      "threshold": -1.0
     },
     "stereo_tools#0": {
       "balance-in": 0.0,
