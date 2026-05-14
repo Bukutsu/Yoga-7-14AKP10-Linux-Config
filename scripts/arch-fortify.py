@@ -518,12 +518,25 @@ def clean_limine(backup_dir: Path):
     content = conf.read_text()
 
     # ── Strip CachyOS theme block ────────────────────────────────
-    # Match the comment line plus all consecutive non-blank lines that follow,
-    # regardless of field order or whether the wallpaper line is present.
+    # 1) Full block when comment header exists
     stripped = re.sub(
         r"^# CachyOS Limine theme[^\n]*\n(?:[^\n]+\n)*",
         "",
         content,
+        flags=re.MULTILINE,
+    )
+    # 2) Orphan wallpaper pointing to CachyOS splash (survives header removal)
+    stripped = re.sub(
+        r"^wallpaper:\s*boot\(\):/limine-splash\.png\s*\n?",
+        "",
+        stripped,
+        flags=re.MULTILINE,
+    )
+    # 3) Orphan empty interface_branding (CachyOS default; non-empty left alone)
+    stripped = re.sub(
+        r"^interface_branding:\s*$\n?",
+        "",
+        stripped,
         flags=re.MULTILINE,
     )
     if stripped != content:
